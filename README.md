@@ -1,5 +1,7 @@
 # Danmaku Studio
 
+**▶ [ブラウザで試す](https://maceknight.github.io/danmaku-studio/)**（インストール不要）
+
 東方弾幕風 ph3 の弾幕を GUI で制作する統合エディタ。
 映像編集ソフトのようにタイムライン上で演出を組み立て、`.dmk` を経由して ph3 スクリプトを出力する。
 
@@ -7,7 +9,7 @@
 GUI → .dmk → AST → Danmakufu ph3 Script
 ```
 
-## 起動
+## ローカルで起動
 
 ```bash
 npm install --prefix danmaku-studio
@@ -18,6 +20,14 @@ npm run dev --prefix danmaku-studio
 ```
 
 → http://localhost:5183
+
+## デプロイ
+
+```bash
+npm run deploy --prefix danmaku-studio
+```
+
+`dist` をビルドして `gh-pages` ブランチへ公開する。ビルド時のみ `base` が `/danmaku-studio/` になる（dev サーバーはルートのまま）。
 
 ## 画面
 
