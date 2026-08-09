@@ -4,6 +4,7 @@ import { useStore, type PlayRate } from '../store/useStore'
 import { Btn, IconBtn, Select, Toggle } from './widgets'
 import { Icon } from './icons'
 import { captureStage } from './Preview'
+import { useIsNarrow } from './useMediaQuery'
 
 const RATES: { value: string; label: string }[] = [
   { value: '0.25', label: 'x0.25' },
@@ -13,7 +14,56 @@ const RATES: { value: string; label: string }[] = [
   { value: '4', label: 'x4.0' },
 ]
 
+/** Phone-width bar: identity, transport, samples, theme. Nothing else fits. */
+function CompactBar() {
+  const project = useStore((s) => s.project)
+  const playing = useStore((s) => s.playing)
+  const theme = useStore((s) => s.theme)
+  const past = useStore((s) => s.past.length)
+  const s = useStore.getState
+
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--card)] px-2">
+      <span className="text-[var(--accent)]">
+        <Icon.logo />
+      </span>
+      <button
+        onClick={() => s().select({ type: 'project' })}
+        className="min-w-0 flex-1 truncate text-left text-[12px] text-[var(--text)]"
+      >
+        {project.name}
+      </button>
+      <IconBtn title="元に戻す" disabled={past === 0} onClick={() => s().undo()}>
+        <Icon.undo />
+      </IconBtn>
+      <IconBtn
+        title={playing ? '停止' : '再生'}
+        active={playing}
+        onClick={() => {
+          s().setReverse(false)
+          s().setPlaying(!playing)
+        }}
+      >
+        {playing ? <Icon.pause /> : <Icon.play />}
+      </IconBtn>
+      <Btn onClick={() => s().setShowSamples(true)}>サンプル</Btn>
+      <IconBtn title="テーマ切替" onClick={() => s().toggleTheme()}>
+        {theme === 'light' ? <Icon.sun /> : <Icon.moon />}
+      </IconBtn>
+      <IconBtn title="設定" onClick={() => s().setShowSettings(true)}>
+        <Icon.gear />
+      </IconBtn>
+    </header>
+  )
+}
+
 export function TopBar() {
+  const narrow = useIsNarrow()
+  if (narrow) return <CompactBar />
+  return <WideBar />
+}
+
+function WideBar() {
   const project = useStore((s) => s.project)
   const playing = useStore((s) => s.playing)
   const rate = useStore((s) => s.rate)

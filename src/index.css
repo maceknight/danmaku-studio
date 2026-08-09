@@ -122,3 +122,21 @@ input[type='range'] {
   border-radius: 14px;
   box-shadow: var(--shadow);
 }
+
+/* Drag surfaces must not let the browser steal the gesture for scrolling. */
+.drag-surface {
+  touch-action: none;
+}
+
+/* Touch targets: bump the small icon buttons up on coarse pointers. */
+@media (pointer: coarse) {
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+  input[type='text'],
+  input[type='number'],
+  select {
+    font-size: 16px; /* stops iOS Safari zooming in on focus */
+    padding: 7px 10px;
+  }
+}

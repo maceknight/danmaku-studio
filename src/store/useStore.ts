@@ -33,6 +33,7 @@ export type PlayRate = 0.25 | 0.5 | 1 | 2 | 4
 export type PreviewTool = 'pan' | 'select' | 'move' | 'zoomIn' | 'zoomOut'
 export type TimeUnit = 'frame' | 'second'
 export type ExportTab = 'script' | 'json' | 'csv' | 'gif'
+export type MobileTab = 'timeline' | 'objects' | 'library' | 'properties' | 'export'
 
 const HISTORY_LIMIT = 60
 
@@ -66,6 +67,8 @@ interface StoreState {
   sampleSeconds: number
   showSettings: boolean
   showSamples: boolean
+  /** which panel the narrow layout shows under the preview */
+  mobileTab: MobileTab
 
   // --- infrastructure -------------------------------------------------------
   mutate: (fn: (p: Project) => void) => void
@@ -97,6 +100,7 @@ interface StoreState {
   setSampleSeconds: (v: number) => void
   setShowSettings: (v: boolean) => void
   setShowSamples: (v: boolean) => void
+  setMobileTab: (t: MobileTab) => void
 
   // --- emitters -------------------------------------------------------------
   addEmitter: () => void
@@ -180,6 +184,7 @@ export const useStore = create<StoreState>((set, get) => ({
   sampleSeconds: 5.2,
   showSettings: false,
   showSamples: false,
+  mobileTab: 'timeline',
 
   // -------------------------------------------------------------------------
   mutate: (fn) =>
@@ -239,6 +244,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setSampleSeconds: (sampleSeconds) => set({ sampleSeconds }),
   setShowSettings: (showSettings) => set({ showSettings }),
   setShowSamples: (showSamples) => set({ showSamples }),
+  setMobileTab: (mobileTab) => set({ mobileTab }),
 
   // -------------------------------------------------------------------------
   addEmitter: () => {

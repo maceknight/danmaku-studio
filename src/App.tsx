@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { audioEngine } from './audio/engine'
-import { useStore } from './store/useStore'
+import { useStore, type MobileTab } from './store/useStore'
+import { useIsNarrow } from './ui/useMediaQuery'
 import { ExportPanel } from './ui/ExportPanel'
 import { ObjectPanel } from './ui/ObjectPanel'
 import { PatternLibrary } from './ui/PatternLibrary'
@@ -13,11 +14,63 @@ import { TopBar } from './ui/TopBar'
 
 const THEME_KEY = 'danmaku-studio.theme'
 
+const MOBILE_TABS: { id: MobileTab; label: string }[] = [
+  { id: 'timeline', label: 'タイムライン' },
+  { id: 'objects', label: 'オブジェクト' },
+  { id: 'library', label: 'ライブラリ' },
+  { id: 'properties', label: 'プロパティ' },
+  { id: 'export', label: '出力' },
+]
+
+/**
+ * Narrow layout: the preview stays pinned so you can always see the danmaku,
+ * and one panel at a time sits under it behind a tab bar.
+ */
+function MobileShell() {
+  const tab = useStore((s) => s.mobileTab)
+  const setTab = useStore((s) => s.setMobileTab)
+
+  return (
+    <main className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden p-1.5">
+      {/* grid, not a plain div: a lone grid child stretches to fill both axes,
+          which is what gives the Card (and the Pixi host inside it) a height. */}
+      <div className="grid min-h-[38vh] flex-[1.1]">
+        <Preview />
+      </div>
+
+      <nav className="flex shrink-0 gap-1 overflow-x-auto">
+        {MOBILE_TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`shrink-0 rounded-lg px-3 py-2 text-[12px] whitespace-nowrap transition-colors ${
+              tab === t.id
+                ? 'bg-[var(--accent)] font-semibold text-white'
+                : 'border border-[var(--border)] bg-[var(--card)] text-[var(--text-2)]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="grid min-h-0 min-w-0 flex-1">
+        {tab === 'timeline' && <Timeline />}
+        {tab === 'objects' && <ObjectPanel />}
+        {tab === 'library' && <PatternLibrary />}
+        {tab === 'properties' && <Properties />}
+        {tab === 'export' && <ExportPanel />}
+      </div>
+    </main>
+  )
+}
+
 export default function App() {
   const theme = useStore((s) => s.theme)
   const playing = useStore((s) => s.playing)
   const reverse = useStore((s) => s.reverse)
   const rate = useStore((s) => s.rate)
+  const narrow = useIsNarrow()
 
   // Theme → document attribute + persistence
   useEffect(() => {
@@ -101,33 +154,37 @@ export default function App() {
     <div className="relative flex h-full flex-col overflow-hidden bg-[var(--bg)]">
       <TopBar />
 
-      {/*
-        Every track needs min-width:0. Grid/flex items default to min-width:auto,
-        so a wide child (the timeline lane) would blow the 1fr track out and push
-        the right-hand column off screen when the duration grows.
-      */}
-      <main
-        className="grid min-h-0 flex-1 gap-2.5 overflow-hidden p-2.5"
-        style={{ gridTemplateColumns: '260px minmax(0, 1fr) 320px' }}
-      >
-        {/* 1 — objects + library */}
-        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
-          <ObjectPanel />
-          <PatternLibrary />
-        </div>
+      {narrow ? (
+        <MobileShell />
+      ) : (
+        /*
+          Every track needs min-width:0. Grid/flex items default to min-width:auto,
+          so a wide child (the timeline lane) would blow the 1fr track out and push
+          the right-hand column off screen when the duration grows.
+        */
+        <main
+          className="grid min-h-0 flex-1 gap-2.5 overflow-hidden p-2.5"
+          style={{ gridTemplateColumns: '260px minmax(0, 1fr) 320px' }}
+        >
+          {/* 1 — objects + library */}
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
+            <ObjectPanel />
+            <PatternLibrary />
+          </div>
 
-        {/* 2 + 3 — preview over timeline */}
-        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2.5">
-          <Preview />
-          <Timeline />
-        </div>
+          {/* 2 + 3 — preview over timeline */}
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2.5">
+            <Preview />
+            <Timeline />
+          </div>
 
-        {/* 4 + 5 — properties over export */}
-        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5">
-          <Properties />
-          <ExportPanel />
-        </div>
-      </main>
+          {/* 4 + 5 — properties over export */}
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5">
+            <Properties />
+            <ExportPanel />
+          </div>
+        </main>
+      )}
 
       <SettingsDialog />
       <SampleDialog />

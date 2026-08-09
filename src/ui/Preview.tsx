@@ -293,7 +293,7 @@ export function Preview() {
     >
       <div
         ref={hostRef}
-        className="h-full w-full"
+        className="drag-surface h-full w-full"
         style={{
           cursor:
             tool === 'pan'

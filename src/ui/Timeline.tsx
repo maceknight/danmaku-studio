@@ -5,7 +5,8 @@ import { LIBRARY_DRAG_TYPE } from './PatternLibrary'
 import { Btn, Card, IconBtn, Select } from './widgets'
 import { Icon } from './icons'
 
-const HEAD_W = 150
+/** Track-header width. Kept tight so phones still get usable lane space. */
+const HEAD_W = 128
 const ROW_H = 24
 const GROUP_H = 22
 
@@ -75,7 +76,7 @@ export function Timeline() {
               style={{ width: HEAD_W }}
             />
             <div
-              className="relative shrink-0 cursor-ew-resize border-b border-[var(--border)] bg-[var(--card)]"
+              className="drag-surface relative shrink-0 cursor-ew-resize border-b border-[var(--border)] bg-[var(--card)]"
               style={{ width: laneW }}
               onPointerDown={(e) => {
                 scrubbing.current = true
@@ -122,7 +123,7 @@ export function Timeline() {
       </div>
 
       {/* action bar */}
-      <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] px-3 py-2">
+      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-[var(--border)] px-3 py-2">
         <Btn
           onClick={() => {
             const sel = s().selection
@@ -443,7 +444,7 @@ function PatternRow({
       >
         <Gridlines duration={duration} pxPerFrame={pxPerFrame} />
         <div
-          className={`group absolute top-[3px] bottom-[3px] cursor-grab overflow-hidden rounded-md active:cursor-grabbing ${
+          className={`drag-surface group absolute top-[3px] bottom-[3px] cursor-grab overflow-hidden rounded-md active:cursor-grabbing ${
             p.enabled ? '' : 'opacity-40'
           }`}
           style={{
@@ -538,7 +539,7 @@ function SoundRow({
         style={{ width: laneW, height: ROW_H }}
       >
         <div
-          className="absolute top-[4px] bottom-[4px] cursor-grab overflow-hidden rounded-md"
+          className="drag-surface absolute top-[4px] bottom-[4px] cursor-grab overflow-hidden rounded-md"
           style={{
             left: sound.startFrame * pxPerFrame,
             width: Math.max(6, (sound.endFrame - sound.startFrame) * pxPerFrame),
@@ -645,7 +646,7 @@ function KeyDot({
   return (
     <div
       title={`${title} — Alt+クリックで削除`}
-      className="absolute top-1/2 h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rotate-45 cursor-ew-resize border border-[#f5a524] bg-[#fff4dc] hover:bg-[#f5a524]"
+      className="drag-surface absolute top-1/2 h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rotate-45 cursor-ew-resize border border-[#f5a524] bg-[#fff4dc] hover:bg-[#f5a524]"
       style={{ left }}
       onPointerDown={(e) => {
         e.stopPropagation()

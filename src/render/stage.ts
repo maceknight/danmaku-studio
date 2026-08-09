@@ -81,6 +81,10 @@ export class StageRenderer {
   private markers: { g: Graphics; label: Text }[] = []
   /** one bucket per shape so each shape stays a single draw batch */
   private buckets = new Map<BulletShape, ShapeBucket>()
+  private resizeObserver: ResizeObserver | null = null
+  private host: HTMLDivElement | null = null
+  private lastW = 0
+  private lastH = 0
   private ready = false
   private palette: Palette = LIGHT
   private gridKey = ''
@@ -98,9 +102,20 @@ export class StageRenderer {
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
       preference: 'webgl',
-      resizeTo: host,
+      width: Math.max(1, host.clientWidth),
+      height: Math.max(1, host.clientHeight),
     })
     host.appendChild(this.app.canvas)
+
+    // `resizeTo` only reacts to window resizes, so it misses layout changes
+    // like switching to the narrow shell. The observer is the fast path;
+    // `layout()` re-checks every frame so a missed notification can't leave the
+    // canvas stuck at the wrong size.
+    this.host = host
+    this.lastW = Math.max(1, host.clientWidth)
+    this.lastH = Math.max(1, host.clientHeight)
+    this.resizeObserver = new ResizeObserver(() => this.syncSize())
+    this.resizeObserver.observe(host)
     this.app.stage.addChild(this.world)
     this.world.addChild(
       this.gridLayer,
@@ -117,6 +132,9 @@ export class StageRenderer {
 
   destroy() {
     this.ready = false
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
+    this.host = null
     this.app.destroy(true, { children: true, texture: true })
   }
 
@@ -197,8 +215,20 @@ export class StageRenderer {
     }
   }
 
+  /** Match the drawing buffer to the host box. Cheap when nothing changed. */
+  private syncSize() {
+    if (!this.ready || !this.host) return
+    const w = Math.max(1, this.host.clientWidth)
+    const h = Math.max(1, this.host.clientHeight)
+    if (w === this.lastW && h === this.lastH) return
+    this.lastW = w
+    this.lastH = h
+    this.app.renderer.resize(w, h)
+  }
+
   layout(settings: ProjectSettings) {
     if (!this.ready) return
+    this.syncSize()
     const w = this.app.renderer.width / this.app.renderer.resolution
     const h = this.app.renderer.height / this.app.renderer.resolution
     this.fitScale = Math.min(w / settings.stageWidth, h / settings.stageHeight) * 0.9
