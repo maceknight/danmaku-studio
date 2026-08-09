@@ -500,10 +500,13 @@ export class StageRenderer {
   drawStageInto(ctx: CanvasRenderingContext2D, w: number, h: number, settings: ProjectSettings) {
     this.app.renderer.render(this.app.stage)
     const frame = this.stageRect(settings)
+    // Extract at the *output* pixel density, not the on-screen one. Without this
+    // a phone-sized canvas would be upscaled into the GIF and come out blurry.
+    const resolution = Math.min(4, Math.max(1, w / Math.max(1, frame.width)))
     const src = this.app.renderer.extract.canvas({
       target: this.app.stage,
       frame,
-      resolution: 1,
+      resolution,
     }) as HTMLCanvasElement
     ctx.fillStyle = this.backgroundCss
     ctx.fillRect(0, 0, w, h)

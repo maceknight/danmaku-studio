@@ -36,8 +36,10 @@ export function ExportPanel() {
 
   const lines = text.split('\n').length
 
+  // The body scrolls: on a phone the GIF form is taller than the panel, and the
+  // export button would otherwise sit below the fold with no way to reach it.
   return (
-    <Card index={5} title="出力 / エクスポート" bodyClassName="flex flex-col">
+    <Card index={5} title="出力 / エクスポート" bodyClassName="flex flex-col overflow-y-auto">
       <div className="flex shrink-0 gap-1 px-3 pt-2">
         {TABS.map((t) => (
           <button

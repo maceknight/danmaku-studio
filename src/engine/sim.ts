@@ -233,7 +233,13 @@ export class Simulator {
       if (!b.active) continue
 
       const pat = b.patternIdx >= 0 ? this.compiled.patterns[b.patternIdx]?.pattern : null
-      if (pat && pat.modifiers.length > 0) this.applyModifiers(b, i, pat.modifiers)
+      // Split children carry no modifiers. This matches the export: the
+      // generated split code calls CreateShotA1 without attaching a control
+      // task, so children in ph3 have no behaviour either. It also stops the
+      // parent's `destroy` from killing the children the moment they appear.
+      if (pat && pat.modifiers.length > 0 && b.depth === 0) {
+        this.applyModifiers(b, i, pat.modifiers)
+      }
       if (!b.active) continue
 
       if (b.delay > 0) {
@@ -315,7 +321,9 @@ export class Simulator {
           }
           break
         case 'split':
-          if (!(b.fired & bit) && b.depth === 0) {
+          // depth is already guaranteed to be 0 here — modifiers never run for
+          // children — so a child can never split again.
+          if (!(b.fired & bit)) {
             b.fired |= bit
             const pat = this.compiled.patterns[b.patternIdx]?.pattern
             if (pat) {

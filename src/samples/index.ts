@@ -312,14 +312,20 @@ function lesson06(): Project {
             { type: 'destroy', patch: { at: 43 } },
           ],
         }),
-        pat('circle', {
+        pat('nway', {
           name: '親を残す',
           from: 3,
           to: 9,
           color: 'GREEN',
           shape: 'ballLarge',
           colorIndex: 4,
-          set: { interval: 75, count: 3, angleBase: 120, bullet: { speed: 1.5, life: 300 } },
+          set: {
+            interval: 75,
+            count: 3,
+            angleBase: 90,
+            angleSpread: 70,
+            bullet: { speed: 1.6, life: 340 },
+          },
           mods: [{ type: 'split', patch: { at: 60, amount: 5, amount2: 70 } }],
         }),
       ]),
@@ -333,7 +339,9 @@ function lesson07(): Project {
   return project(
     '07_消える弾・膨らむ弾',
     [
-      emitter('Boss', -80, -100, [
+      // Both patterns are tuned so the bullets cross the player line first and
+      // only fade out afterwards — a modifier demo you can still read as danmaku.
+      emitter('Boss', -80, -110, [
         pat('random', {
           name: '消える霧',
           from: 0.5,
@@ -345,12 +353,12 @@ function lesson07(): Project {
             interval: 4,
             count: 3,
             angleRandom: 180,
-            bullet: { speed: 1.1, life: 200, blend: 'add' },
+            bullet: { speed: 1.6, life: 340, blend: 'add' },
           },
-          mods: [{ type: 'fade', patch: { at: 50, duration: 60, amount: 0 } }],
+          mods: [{ type: 'fade', patch: { at: 190, duration: 70, amount: 0 } }],
         }),
       ]),
-      emitter('Boss2', 80, -100, [
+      emitter('Boss2', 80, -110, [
         pat('circle', {
           name: '膨らむ弾',
           from: 0.5,
@@ -358,10 +366,10 @@ function lesson07(): Project {
           color: 'PURPLE',
           shape: 'orb',
           colorIndex: 6,
-          set: { interval: 50, count: 8, bullet: { speed: 1.4, life: 300, scale: 0.6 } },
+          set: { interval: 50, count: 8, bullet: { speed: 1.9, life: 340, scale: 0.6 } },
           mods: [
-            { type: 'scale', patch: { at: 20, duration: 90, amount: 2.6 } },
-            { type: 'fade', patch: { at: 110, duration: 40, amount: 0 } },
+            { type: 'scale', patch: { at: 20, duration: 110, amount: 2.6 } },
+            { type: 'fade', patch: { at: 165, duration: 55, amount: 0 } },
           ],
         }),
       ]),
@@ -535,9 +543,9 @@ function lesson10(): Project {
         interval: 5,
         count: 2,
         angleRandom: 180,
-        bullet: { speed: 1.2, life: 200, blend: 'add' },
+        bullet: { speed: 1.7, life: 320, blend: 'add' },
       },
-      mods: [{ type: 'fade', patch: { at: 60, duration: 50, amount: 0 } }],
+      mods: [{ type: 'fade', patch: { at: 165, duration: 60, amount: 0 } }],
     }),
   ])
 
@@ -563,19 +571,24 @@ function shapeCatalogue(): Project {
     ['butterfly', 'PURPLE', '蝶弾'],
     ['knife', 'SKY', 'ナイフ'],
   ]
+  // One column per shape, each firing straight down, so every silhouette can be
+  // watched crossing the whole field instead of sitting in a corner.
   const emitters = shapes.map(([shape, color, label], i) => {
-    const cols = 4
-    const x = -130 + (i % cols) * 87
-    const y = -170 + Math.floor(i / cols) * 95
-    return emitter(label, x, y, [
-      pat('circle', {
+    const x = -160 + i * 32
+    return emitter(label, x, -195, [
+      pat('nway', {
         name: label,
-        from: 0,
+        from: i * 0.12,
         to: 10,
         color,
         shape,
         colorIndex: i,
-        set: { interval: 90, count: 8, bullet: { speed: 0.85, life: 120, delay: 4 } },
+        set: {
+          interval: 34,
+          count: 1,
+          angleBase: 90,
+          bullet: { speed: 1.9, life: 400, delay: 0 },
+        },
       }),
     ])
   })
@@ -724,7 +737,7 @@ export const SAMPLES: Sample[] = [
     lesson: 6,
     name: '06_分裂弾',
     description: '分裂したあと親を消す場合と、残す場合の比較。',
-    tip: '分裂の直後（1フレーム後）に「消滅」を置くと親が消えて、割れた見た目になる。置かないと親も飛び続けるので弾が増えすぎやすい。子弾は再分裂しないので、分裂の分裂は作れない（弾数の爆発を防ぐため）。',
+    tip: '分裂の直後（1フレーム後）に「消滅」を置くと親が消えて、割れた見た目になる。置かないと親も飛び続けるので弾が増えすぎやすい。子弾はモディファイアを引き継がない（＝再分裂もしないし、親の「消滅」で巻き添えにもならない）。これは ph3 出力側でも同じで、生成される分裂コードは子弾に制御タスクを付けない。',
     tags: ['分裂', '消滅'],
     build: lesson06,
   },
