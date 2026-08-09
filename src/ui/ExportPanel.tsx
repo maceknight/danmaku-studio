@@ -8,12 +8,14 @@ import {
   serializeProject,
 } from '../io/projectIo'
 import { useStore, type ExportTab } from '../store/useStore'
+import { GifExport } from './GifExport'
 import { Btn, Card, Field, Select } from './widgets'
 
 const TABS: { id: ExportTab; label: string }[] = [
   { id: 'script', label: 'スクリプト' },
   { id: 'json', label: 'JSON' },
   { id: 'csv', label: 'CSV' },
+  { id: 'gif', label: 'GIF' },
 ]
 
 export function ExportPanel() {
@@ -26,6 +28,7 @@ export function ExportPanel() {
 
   const text = useMemo(() => {
     void revision
+    if (tab === 'gif') return ''
     if (tab === 'script') return compileToDanmakufu(project)
     if (tab === 'json') return serializeProject(project)
     return compileToCsv(project)
@@ -51,6 +54,9 @@ export function ExportPanel() {
         ))}
       </div>
 
+      {tab === 'gif' && <GifExport />}
+
+      {tab !== 'gif' && (
       <div className="space-y-2 px-3 py-2.5">
         <Field label="出力形式">
           <Select
@@ -59,6 +65,7 @@ export function ExportPanel() {
               { value: 'script', label: '東方弾幕風 ph3 (.txt)' },
               { value: 'json', label: 'プロジェクト JSON (.dmk)' },
               { value: 'csv', label: 'パターン一覧 (.csv)' },
+              { value: 'gif', label: 'アニメーション GIF (.gif)' },
             ]}
             onChange={(v) => setExportTab(v as ExportTab)}
           />
@@ -95,8 +102,9 @@ export function ExportPanel() {
           {preview ? '▾' : '▸'} 出力プレビュー（{lines} 行）
         </button>
       </div>
+      )}
 
-      {preview && (
+      {preview && tab !== 'gif' && (
         <pre className="mx-3 mb-3 max-h-[260px] min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-2.5 font-mono text-[10.5px] leading-[1.55] whitespace-pre text-[var(--text-2)]">
           {text}
         </pre>

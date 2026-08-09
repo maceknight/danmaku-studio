@@ -1,4 +1,13 @@
-import { Application, Container, Graphics, Sprite, Text, Texture, TextStyle } from 'pixi.js'
+import {
+  Application,
+  Container,
+  Graphics,
+  Rectangle,
+  Sprite,
+  Text,
+  Texture,
+  TextStyle,
+} from 'pixi.js'
 import type { SimSnapshotView } from '../engine/types'
 import type { ProjectSettings } from '../types/dmk'
 
@@ -48,13 +57,18 @@ export class StageRenderer {
   private gridLayer = new Graphics()
   private trailLayer = new Graphics()
   private laserLayer = new Graphics()
-  private bulletLayer = new Container()
+  /** coloured outer disc */
+  private rimLayer = new Container()
+  /** white inner core, drawn on top of every rim */
+  private coreLayer = new Container()
   private hitboxLayer = new Graphics()
   private guideLayer = new Graphics()
   private markerLayer = new Container()
-  private sprites: Sprite[] = []
+  private rimSprites: Sprite[] = []
+  private coreSprites: Sprite[] = []
   private markers: { g: Graphics; label: Text }[] = []
-  private bulletTexture: Texture | null = null
+  private discTexture: Texture | null = null
+  private coreTexture: Texture | null = null
   private ready = false
   private palette: Palette = LIGHT
   private gridKey = ''
@@ -80,12 +94,14 @@ export class StageRenderer {
       this.gridLayer,
       this.trailLayer,
       this.laserLayer,
-      this.bulletLayer,
+      this.rimLayer,
+      this.coreLayer,
       this.hitboxLayer,
       this.guideLayer,
       this.markerLayer,
     )
-    this.bulletTexture = this.makeBulletTexture()
+    this.discTexture = this.makeDiscTexture()
+    this.coreTexture = this.makeCoreTexture()
     this.ready = true
   }
 
@@ -98,21 +114,45 @@ export class StageRenderer {
     return this.ready
   }
 
-  /** Soft radial dot used for every shot; tinted per bullet so batching holds. */
-  private makeBulletTexture(): Texture {
-    const size = 32
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const ctx = canvas.getContext('2d')!
-    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  /**
+   * Bullets are drawn as two stacked discs — a tinted outer disc with a white
+   * core on top, the classic Touhou shot look. Both layers share one sprite
+   * pool each and a single texture, so each layer stays one draw batch.
+   */
+  private makeDiscTexture(): Texture {
+    const size = 64
+    const c = document.createElement('canvas')
+    c.width = size
+    c.height = size
+    const ctx = c.getContext('2d')!
+    const r = size / 2
+    const g = ctx.createRadialGradient(r, r, 0, r, r, r)
+    // solid to ~78% of the radius, then a short feathered edge for anti-aliasing
     g.addColorStop(0, 'rgba(255,255,255,1)')
-    g.addColorStop(0.42, 'rgba(255,255,255,0.98)')
-    g.addColorStop(0.62, 'rgba(255,255,255,0.55)')
+    g.addColorStop(0.66, 'rgba(255,255,255,1)')
+    g.addColorStop(0.82, 'rgba(255,255,255,0.92)')
+    g.addColorStop(0.93, 'rgba(255,255,255,0.4)')
     g.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = g
     ctx.fillRect(0, 0, size, size)
-    return Texture.from(canvas)
+    return Texture.from(c)
+  }
+
+  private makeCoreTexture(): Texture {
+    const size = 64
+    const c = document.createElement('canvas')
+    c.width = size
+    c.height = size
+    const ctx = c.getContext('2d')!
+    const r = size / 2
+    const g = ctx.createRadialGradient(r, r, 0, r, r, r)
+    g.addColorStop(0, 'rgba(255,255,255,1)')
+    g.addColorStop(0.72, 'rgba(255,255,255,1)')
+    g.addColorStop(0.9, 'rgba(255,255,255,0.85)')
+    g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, size, size)
+    return Texture.from(c)
   }
 
   setTheme(dark: boolean) {
@@ -178,32 +218,47 @@ export class StageRenderer {
     this.renderGuides(settings)
   }
 
+  /** Outer disc radius in world units for a bullet of scale 1. */
+  private static readonly RIM_RADIUS = 5.2
+  /** White core as a fraction of the outer disc. */
+  private static readonly CORE_RATIO = 0.52
+
   private renderBullets(view: SimSnapshotView, opts: RenderOptions) {
-    const tex = this.bulletTexture!
     const bullets = view.bullets
     let si = 0
     this.laserLayer.clear()
     this.trailLayer.clear()
     this.hitboxLayer.clear()
 
+    const rimScale = (StageRenderer.RIM_RADIUS * 2) / 64
+    const coreScale = rimScale * StageRenderer.CORE_RATIO
+
     for (let i = 0; i < bullets.length; i++) {
       const b = bullets[i]
 
       if (b.kind === 1) {
         const rad = (b.angle * Math.PI) / 180
+        const ex = b.x + Math.cos(rad) * b.laserLength
+        const ey = b.y + Math.sin(rad) * b.laserLength
+        const w = b.laserWidth * b.scale
+        // same idea as the shots: coloured body with a bright core down the middle
         this.laserLayer
           .moveTo(b.x, b.y)
-          .lineTo(b.x + Math.cos(rad) * b.laserLength, b.y + Math.sin(rad) * b.laserLength)
+          .lineTo(ex, ey)
+          .stroke({ color: b.color, width: w, alpha: 0.5 * b.alpha, cap: 'round' })
+        this.laserLayer
+          .moveTo(b.x, b.y)
+          .lineTo(ex, ey)
           .stroke({
-            color: b.color,
-            width: b.laserWidth * b.scale,
-            alpha: 0.5 * b.alpha,
+            color: 0xffffff,
+            width: w * StageRenderer.CORE_RATIO,
+            alpha: 0.85 * b.alpha,
             cap: 'round',
           })
         if (opts.showHitbox) {
           this.hitboxLayer
             .moveTo(b.x, b.y)
-            .lineTo(b.x + Math.cos(rad) * b.laserLength, b.y + Math.sin(rad) * b.laserLength)
+            .lineTo(ex, ey)
             .stroke({ color: 0xff4d6a, width: 1, alpha: 0.5 })
         }
         continue
@@ -216,30 +271,50 @@ export class StageRenderer {
           .stroke({ color: b.color, width: 1.5 * b.scale, alpha: 0.18 * b.alpha })
       }
 
-      let sp = this.sprites[si]
-      if (!sp) {
-        sp = new Sprite(tex)
-        sp.anchor.set(0.5)
-        this.bulletLayer.addChild(sp)
-        this.sprites[si] = sp
+      let rim = this.rimSprites[si]
+      let core = this.coreSprites[si]
+      if (!rim) {
+        rim = new Sprite(this.discTexture!)
+        rim.anchor.set(0.5)
+        this.rimLayer.addChild(rim)
+        this.rimSprites[si] = rim
+        core = new Sprite(this.coreTexture!)
+        core.anchor.set(0.5)
+        this.coreLayer.addChild(core)
+        this.coreSprites[si] = core
       }
-      sp.visible = true
-      sp.x = b.x
-      sp.y = b.y
-      sp.tint = b.color
-      const delayScale = b.delay > 0 ? 1.6 + b.delay * 0.06 : 1
-      sp.scale.set(b.scale * 0.55 * delayScale)
-      sp.alpha = b.delay > 0 ? 0.3 : b.alpha
-      sp.blendMode = b.additive ? 'add' : 'normal'
+
+      const spawning = b.delay > 0
+      const delayScale = spawning ? 1.7 + b.delay * 0.07 : 1
+      const alpha = spawning ? 0.28 : b.alpha
+
+      rim.visible = true
+      rim.x = b.x
+      rim.y = b.y
+      rim.tint = b.color
+      rim.scale.set(b.scale * rimScale * delayScale)
+      rim.alpha = alpha
+      rim.blendMode = b.additive ? 'add' : 'normal'
+
+      core.visible = !spawning
+      core.x = b.x
+      core.y = b.y
+      core.scale.set(b.scale * coreScale)
+      core.alpha = b.alpha
+      core.blendMode = b.additive ? 'add' : 'normal'
+
       si++
 
-      if (opts.showHitbox && b.delay <= 0) {
+      if (opts.showHitbox && !spawning) {
         this.hitboxLayer.circle(b.x, b.y, b.hitbox * b.scale)
       }
     }
 
     if (opts.showHitbox) this.hitboxLayer.stroke({ color: 0xff4d6a, width: 1, alpha: 0.65 })
-    for (let i = si; i < this.sprites.length; i++) this.sprites[i].visible = false
+    for (let i = si; i < this.rimSprites.length; i++) {
+      this.rimSprites[i].visible = false
+      this.coreSprites[i].visible = false
+    }
   }
 
   private renderMarkers(view: SimSnapshotView, selected: string | null) {
@@ -299,5 +374,36 @@ export class StageRenderer {
     if (!this.ready) return null
     this.app.renderer.render(this.app.stage)
     return this.app.renderer.extract.base64(this.app.stage)
+  }
+
+  /** The stage rectangle in screen pixels, given the current pan/zoom. */
+  stageRect(settings: ProjectSettings): Rectangle {
+    const s = this.fitScale * this.zoom
+    const w = settings.stageWidth * s
+    const h = settings.stageHeight * s
+    return new Rectangle(this.world.position.x - w / 2, this.world.position.y - h / 2, w, h)
+  }
+
+  /** Background colour as CSS, for compositing extracted frames. */
+  get backgroundCss(): string {
+    return `#${this.palette.bg.toString(16).padStart(6, '0')}`
+  }
+
+  /**
+   * Draw the current stage into `ctx` at the given size. Extraction uses an
+   * explicit frame so every captured frame shares identical framing — without
+   * it Pixi would crop to the bullets' bounding box and the GIF would jitter.
+   */
+  drawStageInto(ctx: CanvasRenderingContext2D, w: number, h: number, settings: ProjectSettings) {
+    this.app.renderer.render(this.app.stage)
+    const frame = this.stageRect(settings)
+    const src = this.app.renderer.extract.canvas({
+      target: this.app.stage,
+      frame,
+      resolution: 1,
+    }) as HTMLCanvasElement
+    ctx.fillStyle = this.backgroundCss
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(src, 0, 0, w, h)
   }
 }

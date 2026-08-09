@@ -4,6 +4,15 @@ import { FPS, type Project } from '../types/dmk'
 
 const safeName = (s: string) => s.replace(/[^0-9A-Za-z_\-ぁ-んァ-ヶ一-龠]+/g, '_') || 'danmaku'
 
+export function downloadBlob(name: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export function download(name: string, text: string, mime: string) {
   const blob = new Blob([text], { type: mime })
   const url = URL.createObjectURL(blob)

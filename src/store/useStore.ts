@@ -32,7 +32,7 @@ export type Selection =
 export type PlayRate = 0.25 | 0.5 | 1 | 2 | 4
 export type PreviewTool = 'pan' | 'select' | 'move' | 'zoomIn' | 'zoomOut'
 export type TimeUnit = 'frame' | 'second'
-export type ExportTab = 'script' | 'json' | 'csv'
+export type ExportTab = 'script' | 'json' | 'csv' | 'gif'
 
 const HISTORY_LIMIT = 60
 

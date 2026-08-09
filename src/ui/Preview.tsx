@@ -1,15 +1,83 @@
 import { useEffect, useRef } from 'react'
 import { Simulator } from '../engine/sim'
+import { estimateFrames, type GifOptions, type GifProgress } from '../io/gifExport'
 import { StageRenderer } from '../render/stage'
 import { useStore, type PreviewTool } from '../store/useStore'
 import { formatTimecode } from '../types/dmk'
 import { Card, Checkbox, IconBtn } from './widgets'
 import { Icon } from './icons'
 
-/** Module-level handle so the top bar's camera button can grab a frame. */
+/** Module-level handles so the top bar and the export panel can drive the
+ *  live renderer / simulator without threading refs through the tree. */
 let activeRenderer: StageRenderer | null = null
+let activeSim: Simulator | null = null
+/** While true the rAF loop yields the renderer to the GIF recorder. */
+let recording = false
+
 export async function captureStage(): Promise<string | null> {
   return activeRenderer ? activeRenderer.capture() : null
+}
+
+/**
+ * Replays the timeline through the live renderer and captures each sampled
+ * frame. Playback is paused and the view is reset to "fit" so the recording is
+ * framed on the stage rather than on whatever the user had panned to.
+ */
+export async function recordGifFrames(
+  opts: GifOptions,
+  onProgress?: (p: GifProgress) => void,
+): Promise<{ frames: Uint8ClampedArray[]; width: number; height: number } | null> {
+  const r = activeRenderer
+  const sim = activeSim
+  if (!r || !sim || !r.isReady) return null
+
+  const store = useStore.getState()
+  const settings = store.project.settings
+  const savedFrame = store.frame
+  const savedZoom = r.zoom
+  const savedPanX = r.panX
+  const savedPanY = r.panY
+
+  const width = Math.max(64, Math.round(opts.width))
+  const height = Math.round((width * settings.stageHeight) / settings.stageWidth)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+
+  recording = true
+  store.setPlaying(false)
+  r.fit()
+  r.layout(settings)
+
+  const frames: Uint8ClampedArray[] = []
+  const total = estimateFrames(opts)
+  try {
+    let i = 0
+    for (let f = opts.startFrame; f <= opts.endFrame; f += Math.max(1, opts.frameStep)) {
+      const view = sim.seek(f)
+      r.render(view, settings, {
+        showGrid: store.showGrid,
+        showHitbox: false, // hitboxes are an editing aid, not something to share
+        showTrails: store.showTrails,
+        selectedEmitterId: null,
+        dark: store.theme === 'dark',
+      })
+      r.drawStageInto(ctx, width, height, settings)
+      frames.push(ctx.getImageData(0, 0, width, height).data)
+      i++
+      onProgress?.({ current: i, total, phase: 'capture' })
+      if (i % 3 === 0) await new Promise((res) => setTimeout(res, 0))
+    }
+  } finally {
+    recording = false
+    r.zoom = savedZoom
+    r.panX = savedPanX
+    r.panY = savedPanY
+    useStore.getState().setFrame(savedFrame)
+  }
+
+  return { frames, width, height }
 }
 
 /** Last rendered emitter positions — hit-testing must use these, not the
@@ -58,6 +126,7 @@ export function Preview() {
       rendererRef.current = renderer
       activeRenderer = renderer
       const sim = new Simulator(st().project)
+      activeSim = sim
 
       let lastRevision = -1
       let lastTime = performance.now()
@@ -69,6 +138,8 @@ export function Preview() {
         raf = requestAnimationFrame(loop)
         const dt = Math.min(now - lastTime, 250)
         lastTime = now
+        // the GIF recorder owns the renderer while it runs
+        if (recording) return
         const s = st()
 
         if (s.revision !== lastRevision) {
@@ -136,7 +207,10 @@ export function Preview() {
       disposed = true
       cancelAnimationFrame(raf)
       if (rendererRef.current) {
-        if (activeRenderer === rendererRef.current) activeRenderer = null
+        if (activeRenderer === rendererRef.current) {
+          activeRenderer = null
+          activeSim = null
+        }
         rendererRef.current.destroy()
         rendererRef.current = null
       }
