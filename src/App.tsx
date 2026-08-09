@@ -100,21 +100,29 @@ export default function App() {
     <div className="relative flex h-full flex-col overflow-hidden bg-[var(--bg)]">
       <TopBar />
 
-      <main className="grid min-h-0 flex-1 gap-2.5 p-2.5" style={{ gridTemplateColumns: '260px 1fr 320px' }}>
+      {/*
+        Every track needs min-width:0. Grid/flex items default to min-width:auto,
+        so a wide child (the timeline lane) would blow the 1fr track out and push
+        the right-hand column off screen when the duration grows.
+      */}
+      <main
+        className="grid min-h-0 flex-1 gap-2.5 overflow-hidden p-2.5"
+        style={{ gridTemplateColumns: '260px minmax(0, 1fr) 320px' }}
+      >
         {/* 1 — objects + library */}
-        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
           <ObjectPanel />
           <PatternLibrary />
         </div>
 
         {/* 2 + 3 — preview over timeline */}
-        <div className="grid min-h-0 grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2.5">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] gap-2.5">
           <Preview />
           <Timeline />
         </div>
 
         {/* 4 + 5 — properties over export */}
-        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5">
+        <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-2.5">
           <Properties />
           <ExportPanel />
         </div>

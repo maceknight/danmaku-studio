@@ -17,17 +17,17 @@ export function Card({
   bodyClassName?: string
 }) {
   return (
-    <section className={`card flex min-h-0 flex-col ${className}`}>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
+    <section className={`card flex min-h-0 min-w-0 flex-col ${className}`}>
+      <header className="flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b border-[var(--border)] px-3">
         {index !== undefined && (
-          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--accent-ink)]">
+          <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--accent-ink)]">
             {index}
           </span>
         )}
-        <h2 className="text-[12.5px] font-semibold text-[var(--text)]">{title}</h2>
-        <div className="ml-auto flex items-center gap-1.5">{right}</div>
+        <h2 className="truncate text-[12.5px] font-semibold text-[var(--text)]">{title}</h2>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">{right}</div>
       </header>
-      <div className={`min-h-0 flex-1 ${bodyClassName}`}>{children}</div>
+      <div className={`min-h-0 min-w-0 flex-1 ${bodyClassName}`}>{children}</div>
     </section>
   )
 }

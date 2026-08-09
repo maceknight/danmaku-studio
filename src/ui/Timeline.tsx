@@ -66,7 +66,7 @@ export function Timeline() {
       }
       bodyClassName="flex flex-col"
     >
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 w-full min-w-0 flex-1 overflow-auto">
         <div className="relative" style={{ width: HEAD_W + laneW }}>
           {/* ruler */}
           <div className="sticky top-0 z-30 flex h-7">
