@@ -8,7 +8,7 @@ import {
   Texture,
   TextStyle,
 } from 'pixi.js'
-import type { SimSnapshotView } from '../engine/types'
+import type { SimBullet, SimSnapshotView } from '../engine/types'
 import type { BulletShape, ProjectSettings } from '../types/dmk'
 import { SHAPES, traceShape } from '../types/shapes'
 
@@ -235,6 +235,82 @@ export class StageRenderer {
     this.renderGuides(settings)
   }
 
+  /** Frames a straight laser takes to swell from telegraph to full width. */
+  private static readonly MATERIALISE = 6
+
+  /**
+   * 固定式 (kind 1) — anchored at the source. Shows a thin 予告線 for
+   * `telegraph` frames, then swells into the real beam.
+   * 射出式 (kind 2) — まち針. Grows out of the muzzle up to `laserLength`
+   * and travels, so the tail follows the head once it is fully extended.
+   */
+  private drawLaser(b: SimBullet, opts: RenderOptions) {
+    const rad = (b.angle * Math.PI) / 180
+    const dx = Math.cos(rad)
+    const dy = Math.sin(rad)
+    const fullWidth = b.laserWidth * b.scale
+    const g = this.laserLayer
+
+    let ax: number, ay: number, bx: number, by: number
+    let width: number
+    let alpha: number
+    let telegraphing = false
+
+    if (b.kind === 1) {
+      ax = b.x
+      ay = b.y
+      bx = b.x + dx * b.laserLength
+      by = b.y + dy * b.laserLength
+      telegraphing = b.delay > 0
+      if (telegraphing) {
+        width = Math.max(1, fullWidth * 0.09)
+        // gentle pulse so the warning reads as "something is coming"
+        const t = (b.telegraph - b.delay) / Math.max(1, b.telegraph)
+        alpha = (0.22 + 0.16 * Math.sin(t * Math.PI * 6)) * b.alpha
+      } else {
+        const since = b.age - b.telegraph
+        const swell = Math.min(1, (since + 1) / StageRenderer.MATERIALISE)
+        // overshoot slightly on the first frames — the classic materialise flash
+        const flash = swell < 1 ? 1 + (1 - swell) * 0.9 : 1
+        width = fullWidth * swell * flash
+        alpha = (0.45 + 0.35 * (1 - swell)) * b.alpha
+      }
+    } else {
+      // loose: the segment grows from the muzzle until it reaches full length
+      const len = Math.min(b.laserLength, b.travel)
+      bx = b.x
+      by = b.y
+      ax = b.x - dx * len
+      ay = b.y - dy * len
+      width = fullWidth
+      alpha = 0.5 * b.alpha
+      if (b.delay > 0) {
+        width = fullWidth * 0.12
+        alpha = 0.3 * b.alpha
+      }
+    }
+
+    if (width <= 0) return
+
+    g.moveTo(ax, ay).lineTo(bx, by).stroke({ color: b.color, width, alpha, cap: 'round' })
+    if (!telegraphing) {
+      g.moveTo(ax, ay)
+        .lineTo(bx, by)
+        .stroke({ color: 0xffffff, width: width * 0.45, alpha: 0.85 * b.alpha, cap: 'round' })
+      // bright muzzle / head glow
+      const hx = b.kind === 2 ? bx : ax
+      const hy = b.kind === 2 ? by : ay
+      g.circle(hx, hy, width * 0.75).fill({ color: 0xffffff, alpha: 0.5 * b.alpha })
+    }
+
+    if (opts.showHitbox && !telegraphing) {
+      this.hitboxLayer
+        .moveTo(ax, ay)
+        .lineTo(bx, by)
+        .stroke({ color: 0xff4d6a, width: 1, alpha: 0.5 })
+    }
+  }
+
   private renderBullets(view: SimSnapshotView, opts: RenderOptions) {
     const bullets = view.bullets
     this.laserLayer.clear()
@@ -245,26 +321,8 @@ export class StageRenderer {
     for (let i = 0; i < bullets.length; i++) {
       const b = bullets[i]
 
-      if (b.kind === 1) {
-        const rad = (b.angle * Math.PI) / 180
-        const ex = b.x + Math.cos(rad) * b.laserLength
-        const ey = b.y + Math.sin(rad) * b.laserLength
-        const w = b.laserWidth * b.scale
-        // same idea as the shots: coloured body with a bright core down the middle
-        this.laserLayer
-          .moveTo(b.x, b.y)
-          .lineTo(ex, ey)
-          .stroke({ color: b.color, width: w, alpha: 0.5 * b.alpha, cap: 'round' })
-        this.laserLayer
-          .moveTo(b.x, b.y)
-          .lineTo(ex, ey)
-          .stroke({ color: 0xffffff, width: w * 0.5, alpha: 0.85 * b.alpha, cap: 'round' })
-        if (opts.showHitbox) {
-          this.hitboxLayer
-            .moveTo(b.x, b.y)
-            .lineTo(ex, ey)
-            .stroke({ color: 0xff4d6a, width: 1, alpha: 0.5 })
-        }
+      if (b.kind === 1 || b.kind === 2) {
+        this.drawLaser(b, opts)
         continue
       }
 

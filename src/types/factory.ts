@@ -173,8 +173,10 @@ export function defaultPattern(
     bullet: defaultBullet(),
     modifiers: [],
 
+    laserType: 'straight',
     laserLength: 320,
     laserWidth: 16,
+    laserDelay: 60,
   }
 
   switch (type) {
@@ -187,7 +189,16 @@ export function defaultPattern(
     case 'fan':
       return { ...p, count: 9, angleSpread: 90, interval: 30 }
     case 'laser':
-      return { ...p, count: 4, interval: 90, angleSpread: 120 }
+      return {
+        ...p,
+        count: 4,
+        interval: 120,
+        angleSpread: 120,
+        laserType: 'straight',
+        laserDelay: 60,
+        // lasers have their own telegraph, so no separate spawn delay
+        bullet: { ...p.bullet, life: 90, delay: 0 },
+      }
     case 'random':
       return { ...p, count: 8, interval: 6, angleSpread: 360, angleRandom: 180 }
     case 'aim':

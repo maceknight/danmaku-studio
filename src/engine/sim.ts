@@ -186,26 +186,32 @@ export class Simulator {
     const b = this.pool.acquire()
     if (!b) return null
     const bd = p.bullet
-    b.kind = p.type === 'laser' ? 1 : 0
+    const isLaser = p.type === 'laser'
+    const loose = isLaser && p.laserType === 'loose'
+    b.kind = isLaser ? (loose ? 2 : 1) : 0
     b.x = x
     b.y = y
     b.px = x
     b.py = y
     b.angle = angle
-    b.speed = speed
-    b.accel = bd.accel
+    // an anchored straight laser never moves; its "delay" is the telegraph
+    b.speed = b.kind === 1 ? 0 : speed
+    b.accel = b.kind === 1 ? 0 : bd.accel
     b.maxSpeed = bd.maxSpeed
-    b.angularVelocity = bd.angularVelocity
+    b.angularVelocity = b.kind === 1 ? 0 : bd.angularVelocity
     b.gvx = 0
     b.gvy = 0
     b.age = 0
-    b.life = bd.life
+    b.travel = 0
+    b.telegraph = b.kind === 1 ? Math.max(0, Math.round(p.laserDelay)) : 0
+    // `life` is measured from materialisation, so the telegraph is added on top
+    b.life = bd.life + b.telegraph
     b.scale = bd.scale
     b.baseScale = bd.scale
     b.alpha = 1
     b.color = hexToInt(bd.color)
     b.additive = bd.blend === 'add'
-    b.delay = bd.delay
+    b.delay = b.kind === 1 ? b.telegraph : bd.delay
     b.hitbox = bd.hitboxRadius
     b.shape = bd.shape
     b.laserLength = p.laserLength
@@ -233,6 +239,8 @@ export class Simulator {
       if (b.delay > 0) {
         b.delay -= 1
         b.age += 1
+        // an anchored laser still ages out during its telegraph
+        if (b.kind === 1 && b.age >= b.life) this.pool.release(i)
         continue
       }
 
@@ -247,15 +255,19 @@ export class Simulator {
       const rad = b.angle * D2R
       b.x += Math.cos(rad) * b.speed + b.gvx
       b.y += Math.sin(rad) * b.speed + b.gvy
+      b.travel += Math.abs(b.speed)
       b.age += 1
+
+      // a loose laser stays visible until its tail has also left the stage
+      const margin = b.kind === 2 ? b.laserLength : 0
 
       if (
         b.age >= b.life ||
         b.alpha <= 0 ||
-        b.x < -halfW ||
-        b.x > halfW ||
-        b.y < -halfH ||
-        b.y > halfH
+        b.x < -halfW - margin ||
+        b.x > halfW + margin ||
+        b.y < -halfH - margin ||
+        b.y > halfH + margin
       ) {
         this.pool.release(i)
       }

@@ -48,9 +48,16 @@ class Writer {
 function shotCreateCall(s: SpawnNode): string {
   const b = s.bullet
   if (s.patternType === 'laser') {
+    if (s.laserType === 'loose') {
+      // 射出式（まち針）— 発射元から伸びながら飛ぶ
+      return `CreateLooseLaserA1(ox, oy, spd, ang, ${n(s.laserLength)}, ${n(s.laserWidth)}, ${
+        b.shotDataId
+      }, ${n(b.delay)})`
+    }
+    // 固定式 — 第8引数が予告線の表示フレーム数になる
     return `CreateStraightLaserA1(ox, oy, ang, ${n(s.laserLength)}, ${n(s.laserWidth)}, ${n(
       b.life,
-    )}, ${b.shotDataId}, ${n(b.delay)})`
+    )}, ${b.shotDataId}, ${n(s.laserDelay)})`
   }
   if (b.accel !== 0) {
     return `CreateShotA2(ox, oy, spd, ang, ${n(b.accel)}, ${n(b.maxSpeed)}, ${b.shotDataId}, ${n(

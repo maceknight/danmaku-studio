@@ -43,8 +43,10 @@ function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
       blend: p.bullet.blend,
       delay: p.bullet.delay,
     },
+    laserType: p.laserType,
     laserLength: p.laserLength,
     laserWidth: p.laserWidth,
+    laserDelay: Math.max(0, Math.round(p.laserDelay)),
     controlTask,
   }
 }

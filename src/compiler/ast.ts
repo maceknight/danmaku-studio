@@ -6,7 +6,7 @@
  * replace the generator.
  */
 
-import type { BlendMode, Modifier, PatternType } from '../types/dmk'
+import type { BlendMode, LaserType, Modifier, PatternType } from '../types/dmk'
 
 export interface BulletNode {
   shotDataId: string
@@ -37,8 +37,10 @@ export interface SpawnNode {
   angleRandom: number
   aimPlayer: boolean
   bullet: BulletNode
+  laserType: LaserType
   laserLength: number
   laserWidth: number
+  laserDelay: number
   /** name of the generated per-bullet control task, or null when not needed */
   controlTask: string | null
 }

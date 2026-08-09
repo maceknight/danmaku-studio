@@ -156,9 +156,21 @@ export interface Pattern {
   bullet: BulletDef
   modifiers: Modifier[]
 
+  /** 固定式（予告線→実体化） or 射出式（まち針） */
+  laserType: LaserType
   laserLength: number
   laserWidth: number
+  /** 固定式: 予告線が出てから実体化するまでのフレーム数 */
+  laserDelay: number
 }
+
+/**
+ * 固定式レーザー — 予告線が先に出て、遅れて実体化する。ph3 の
+ * CreateStraightLaserA1 にあたる。
+ * 射出式レーザー — 発射元から一定の長さまで伸びながら飛ぶ「まち針」。
+ * ph3 の CreateLooseLaserA1 にあたる。
+ */
+export type LaserType = 'straight' | 'loose'
 
 // ---------------------------------------------------------------------------
 // Emitters (tree groups) / sounds

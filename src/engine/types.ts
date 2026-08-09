@@ -1,4 +1,5 @@
-export type BulletKind = 0 | 1 // 0 = shot, 1 = laser
+/** 0 = shot, 1 = anchored straight laser, 2 = travelling loose laser */
+export type BulletKind = 0 | 1 | 2
 
 export interface SimBullet {
   active: boolean
@@ -26,8 +27,13 @@ export interface SimBullet {
   hitbox: number
   /** BulletShape — kept as a plain string so the engine stays UI-agnostic */
   shape: string
+  /** max length; loose lasers grow up to this */
   laserLength: number
   laserWidth: number
+  /** telegraph frames a straight laser was created with (0 for shots) */
+  telegraph: number
+  /** distance travelled since spawn — drives loose-laser length */
+  travel: number
   /** index into SimState.patterns for modifier lookup */
   patternIdx: number
   /** split generation — children never re-split */
@@ -79,6 +85,8 @@ export function makeBullet(): SimBullet {
     shape: 'ball',
     laserLength: 0,
     laserWidth: 0,
+    telegraph: 0,
+    travel: 0,
     patternIdx: -1,
     depth: 0,
     fired: 0,

@@ -431,12 +431,43 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
         </Field>
         {p.type === 'laser' && (
           <>
+            <Field label="レーザー種別">
+              <Select
+                value={p.laserType}
+                options={[
+                  { value: 'straight', label: '固定式（予告線あり）' },
+                  { value: 'loose', label: '射出式（まち針）' },
+                ]}
+                onChange={(v) => set({ laserType: v })}
+              />
+            </Field>
             <Field label="レーザー長">
               <NumField value={p.laserLength} onChange={(v) => set({ laserLength: v })} />
             </Field>
             <Field label="レーザー幅">
               <NumField value={p.laserWidth} onChange={(v) => set({ laserWidth: v })} />
             </Field>
+            {p.laserType === 'straight' ? (
+              <>
+                <Field label="予告線の長さ">
+                  <NumField
+                    value={p.laserDelay}
+                    min={0}
+                    suffix="F"
+                    onChange={(v) => set({ laserDelay: Math.round(v) })}
+                  />
+                </Field>
+                <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+                  予告線が {p.laserDelay}F 出たあと実体化し、そこから「寿命{' '}
+                  {p.bullet.life}F」続く（合計 {p.laserDelay + p.bullet.life}F）。
+                </p>
+              </>
+            ) : (
+              <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+                発射元から伸びながら飛ぶ。速度は「弾 (Bullet)」の速度、伸びきる長さは
+                レーザー長。短くして速度を上げると、いわゆるまち針になる。
+              </p>
+            )}
           </>
         )}
       </Group>
