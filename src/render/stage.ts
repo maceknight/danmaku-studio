@@ -9,7 +9,21 @@ import {
   TextStyle,
 } from 'pixi.js'
 import type { SimSnapshotView } from '../engine/types'
-import type { ProjectSettings } from '../types/dmk'
+import type { BulletShape, ProjectSettings } from '../types/dmk'
+import { SHAPES, traceShape } from '../types/shapes'
+
+interface ShapeBucket {
+  rimTexture: Texture
+  coreTexture: Texture
+  rimContainer: Container
+  coreContainer: Container
+  rims: Sprite[]
+  cores: Sprite[]
+  used: number
+}
+
+/** Texture resolution of the longest silhouette axis. */
+const TEX_SIZE = 96
 
 export interface RenderOptions {
   showGrid: boolean
@@ -57,18 +71,16 @@ export class StageRenderer {
   private gridLayer = new Graphics()
   private trailLayer = new Graphics()
   private laserLayer = new Graphics()
-  /** coloured outer disc */
+  /** coloured outer silhouettes */
   private rimLayer = new Container()
-  /** white inner core, drawn on top of every rim */
+  /** white inner cores, drawn on top of every rim */
   private coreLayer = new Container()
   private hitboxLayer = new Graphics()
   private guideLayer = new Graphics()
   private markerLayer = new Container()
-  private rimSprites: Sprite[] = []
-  private coreSprites: Sprite[] = []
   private markers: { g: Graphics; label: Text }[] = []
-  private discTexture: Texture | null = null
-  private coreTexture: Texture | null = null
+  /** one bucket per shape so each shape stays a single draw batch */
+  private buckets = new Map<BulletShape, ShapeBucket>()
   private ready = false
   private palette: Palette = LIGHT
   private gridKey = ''
@@ -100,8 +112,6 @@ export class StageRenderer {
       this.guideLayer,
       this.markerLayer,
     )
-    this.discTexture = this.makeDiscTexture()
-    this.coreTexture = this.makeCoreTexture()
     this.ready = true
   }
 
@@ -115,44 +125,51 @@ export class StageRenderer {
   }
 
   /**
-   * Bullets are drawn as two stacked discs — a tinted outer disc with a white
-   * core on top, the classic Touhou shot look. Both layers share one sprite
-   * pool each and a single texture, so each layer stays one draw batch.
+   * Bullets are drawn as two stacked silhouettes — a tinted outer shape with a
+   * white core on top, the classic Touhou shot look. Textures are built per
+   * shape on first use and shared by every bullet of that shape.
    */
-  private makeDiscTexture(): Texture {
-    const size = 64
+  private silhouetteTexture(shape: BulletShape, coreScale: number): Texture {
+    const spec = SHAPES[shape]
+    const w = TEX_SIZE
+    const h = Math.round(TEX_SIZE / spec.aspect)
     const c = document.createElement('canvas')
-    c.width = size
-    c.height = size
+    c.width = w
+    c.height = h
     const ctx = c.getContext('2d')!
-    const r = size / 2
-    const g = ctx.createRadialGradient(r, r, 0, r, r, r)
-    // solid to ~78% of the radius, then a short feathered edge for anti-aliasing
-    g.addColorStop(0, 'rgba(255,255,255,1)')
-    g.addColorStop(0.66, 'rgba(255,255,255,1)')
-    g.addColorStop(0.82, 'rgba(255,255,255,0.92)')
-    g.addColorStop(0.93, 'rgba(255,255,255,0.4)')
-    g.addColorStop(1, 'rgba(255,255,255,0)')
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, size, size)
+    const rx = (w / 2) * 0.94 * coreScale
+    const ry = (h / 2) * 0.94 * coreScale
+
+    // soft outer falloff so edges stay smooth when scaled up
+    ctx.fillStyle = '#ffffff'
+    ctx.shadowColor = 'rgba(255,255,255,0.85)'
+    ctx.shadowBlur = TEX_SIZE * 0.04
+    traceShape(ctx, shape, w / 2, h / 2, rx, ry)
+    ctx.fill()
+    ctx.shadowBlur = 0
+    traceShape(ctx, shape, w / 2, h / 2, rx, ry)
+    ctx.fill()
     return Texture.from(c)
   }
 
-  private makeCoreTexture(): Texture {
-    const size = 64
-    const c = document.createElement('canvas')
-    c.width = size
-    c.height = size
-    const ctx = c.getContext('2d')!
-    const r = size / 2
-    const g = ctx.createRadialGradient(r, r, 0, r, r, r)
-    g.addColorStop(0, 'rgba(255,255,255,1)')
-    g.addColorStop(0.72, 'rgba(255,255,255,1)')
-    g.addColorStop(0.9, 'rgba(255,255,255,0.85)')
-    g.addColorStop(1, 'rgba(255,255,255,0)')
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, size, size)
-    return Texture.from(c)
+  private bucket(shape: BulletShape): ShapeBucket {
+    let b = this.buckets.get(shape)
+    if (b) return b
+    const rimContainer = new Container()
+    const coreContainer = new Container()
+    this.rimLayer.addChild(rimContainer)
+    this.coreLayer.addChild(coreContainer)
+    b = {
+      rimTexture: this.silhouetteTexture(shape, 1),
+      coreTexture: this.silhouetteTexture(shape, SHAPES[shape].coreRatio),
+      rimContainer,
+      coreContainer,
+      rims: [],
+      cores: [],
+      used: 0,
+    }
+    this.buckets.set(shape, b)
+    return b
   }
 
   setTheme(dark: boolean) {
@@ -218,20 +235,12 @@ export class StageRenderer {
     this.renderGuides(settings)
   }
 
-  /** Outer disc radius in world units for a bullet of scale 1. */
-  private static readonly RIM_RADIUS = 5.2
-  /** White core as a fraction of the outer disc. */
-  private static readonly CORE_RATIO = 0.52
-
   private renderBullets(view: SimSnapshotView, opts: RenderOptions) {
     const bullets = view.bullets
-    let si = 0
     this.laserLayer.clear()
     this.trailLayer.clear()
     this.hitboxLayer.clear()
-
-    const rimScale = (StageRenderer.RIM_RADIUS * 2) / 64
-    const coreScale = rimScale * StageRenderer.CORE_RATIO
+    for (const b of this.buckets.values()) b.used = 0
 
     for (let i = 0; i < bullets.length; i++) {
       const b = bullets[i]
@@ -249,12 +258,7 @@ export class StageRenderer {
         this.laserLayer
           .moveTo(b.x, b.y)
           .lineTo(ex, ey)
-          .stroke({
-            color: 0xffffff,
-            width: w * StageRenderer.CORE_RATIO,
-            alpha: 0.85 * b.alpha,
-            cap: 'round',
-          })
+          .stroke({ color: 0xffffff, width: w * 0.5, alpha: 0.85 * b.alpha, cap: 'round' })
         if (opts.showHitbox) {
           this.hitboxLayer
             .moveTo(b.x, b.y)
@@ -271,39 +275,48 @@ export class StageRenderer {
           .stroke({ color: b.color, width: 1.5 * b.scale, alpha: 0.18 * b.alpha })
       }
 
-      let rim = this.rimSprites[si]
-      let core = this.coreSprites[si]
+      const shape = b.shape as BulletShape
+      const spec = SHAPES[shape] ?? SHAPES.ball
+      const bucket = this.bucket(shape in SHAPES ? shape : 'ball')
+      const si = bucket.used
+
+      let rim = bucket.rims[si]
+      let core = bucket.cores[si]
       if (!rim) {
-        rim = new Sprite(this.discTexture!)
+        rim = new Sprite(bucket.rimTexture)
         rim.anchor.set(0.5)
-        this.rimLayer.addChild(rim)
-        this.rimSprites[si] = rim
-        core = new Sprite(this.coreTexture!)
+        bucket.rimContainer.addChild(rim)
+        bucket.rims[si] = rim
+        core = new Sprite(bucket.coreTexture)
         core.anchor.set(0.5)
-        this.coreLayer.addChild(core)
-        this.coreSprites[si] = core
+        bucket.coreContainer.addChild(core)
+        bucket.cores[si] = core
       }
 
       const spawning = b.delay > 0
       const delayScale = spawning ? 1.7 + b.delay * 0.07 : 1
-      const alpha = spawning ? 0.28 : b.alpha
+      // texture is TEX_SIZE across; map it onto the shape's world radius
+      const unit = (spec.radius * 2) / TEX_SIZE
+      const rotation = spec.directional ? (b.angle * Math.PI) / 180 : 0
 
       rim.visible = true
       rim.x = b.x
       rim.y = b.y
+      rim.rotation = rotation
       rim.tint = b.color
-      rim.scale.set(b.scale * rimScale * delayScale)
-      rim.alpha = alpha
+      rim.scale.set(b.scale * unit * delayScale)
+      rim.alpha = spawning ? 0.28 : b.alpha
       rim.blendMode = b.additive ? 'add' : 'normal'
 
-      core.visible = !spawning
+      core.visible = !spawning && spec.coreRatio > 0
       core.x = b.x
       core.y = b.y
-      core.scale.set(b.scale * coreScale)
+      core.rotation = rotation
+      core.scale.set(b.scale * unit)
       core.alpha = b.alpha
       core.blendMode = b.additive ? 'add' : 'normal'
 
-      si++
+      bucket.used++
 
       if (opts.showHitbox && !spawning) {
         this.hitboxLayer.circle(b.x, b.y, b.hitbox * b.scale)
@@ -311,9 +324,11 @@ export class StageRenderer {
     }
 
     if (opts.showHitbox) this.hitboxLayer.stroke({ color: 0xff4d6a, width: 1, alpha: 0.65 })
-    for (let i = si; i < this.rimSprites.length; i++) {
-      this.rimSprites[i].visible = false
-      this.coreSprites[i].visible = false
+    for (const bucket of this.buckets.values()) {
+      for (let i = bucket.used; i < bucket.rims.length; i++) {
+        bucket.rims[i].visible = false
+        bucket.cores[i].visible = false
+      }
     }
   }
 

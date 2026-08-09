@@ -44,6 +44,9 @@ export function TopBar() {
       <IconBtn title="保存 (.dmk)" onClick={() => saveDmk(project)}>
         <Icon.save />
       </IconBtn>
+      <Btn onClick={() => s().setShowSamples(true)} title="サンプルプロジェクトを開く">
+        サンプル
+      </Btn>
 
       <span className="mx-1 h-5 w-px bg-[var(--border)]" />
 

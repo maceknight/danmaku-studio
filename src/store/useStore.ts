@@ -13,8 +13,8 @@ import {
   type Project,
   type SoundDef,
 } from '../types/dmk'
+import { createProject } from '../samples'
 import {
-  createProject,
   defaultEmitter,
   defaultModifier,
   defaultPattern,
@@ -65,6 +65,7 @@ interface StoreState {
   cursor: { x: number; y: number }
   sampleSeconds: number
   showSettings: boolean
+  showSamples: boolean
 
   // --- infrastructure -------------------------------------------------------
   mutate: (fn: (p: Project) => void) => void
@@ -95,6 +96,7 @@ interface StoreState {
   setCursor: (x: number, y: number) => void
   setSampleSeconds: (v: number) => void
   setShowSettings: (v: boolean) => void
+  setShowSamples: (v: boolean) => void
 
   // --- emitters -------------------------------------------------------------
   addEmitter: () => void
@@ -177,6 +179,7 @@ export const useStore = create<StoreState>((set, get) => ({
   cursor: { x: 0, y: 0 },
   sampleSeconds: 5.2,
   showSettings: false,
+  showSamples: false,
 
   // -------------------------------------------------------------------------
   mutate: (fn) =>
@@ -235,6 +238,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setCursor: (x, y) => set({ cursor: { x, y } }),
   setSampleSeconds: (sampleSeconds) => set({ sampleSeconds }),
   setShowSettings: (showSettings) => set({ showSettings }),
+  setShowSamples: (showSamples) => set({ showSamples }),
 
   // -------------------------------------------------------------------------
   addEmitter: () => {

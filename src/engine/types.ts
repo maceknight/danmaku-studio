@@ -24,6 +24,8 @@ export interface SimBullet {
   additive: boolean
   delay: number
   hitbox: number
+  /** BulletShape — kept as a plain string so the engine stays UI-agnostic */
+  shape: string
   laserLength: number
   laserWidth: number
   /** index into SimState.patterns for modifier lookup */
@@ -74,6 +76,7 @@ export function makeBullet(): SimBullet {
     additive: false,
     delay: 0,
     hitbox: 4,
+    shape: 'ball',
     laserLength: 0,
     laserWidth: 0,
     patternIdx: -1,

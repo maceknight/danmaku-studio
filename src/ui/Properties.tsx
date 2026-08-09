@@ -12,6 +12,8 @@ import {
   type PatternType,
 } from '../types/dmk'
 import { BULLET_PRESETS, PATTERN_LABELS, PATTERN_LIBRARY } from '../types/factory'
+import { SHAPE_ORDER, SHAPES, suggestShotDataId } from '../types/shapes'
+import { ShapeGlyph } from './icons'
 import { Btn, Card, Field, Group, NumField, Select } from './widgets'
 
 const PATTERN_OPTIONS = PATTERN_LIBRARY.map((t) => ({ value: t, label: PATTERN_LABELS[t] }))
@@ -440,17 +442,41 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
       </Group>
 
       <Group title="弾 (Bullet)">
+        <Field label="弾の種類">
+          <div className="grid grid-cols-6 gap-1">
+            {SHAPE_ORDER.map((s) => (
+              <button
+                key={s}
+                title={`${SHAPES[s].label} — ${suggestShotDataId(p.bullet.graphic, s)}`}
+                onClick={() =>
+                  setBullet({
+                    shape: s,
+                    shotDataId: suggestShotDataId(p.bullet.graphic, s),
+                  })
+                }
+                className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
+                  p.bullet.shape === s
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                    : 'border-[var(--border)] hover:bg-[var(--hover)]'
+                }`}
+                style={{ color: p.bullet.color }}
+              >
+                <ShapeGlyph shape={s} size={18} />
+              </button>
+            ))}
+          </div>
+        </Field>
         <Field label="色プリセット">
           <Select
-            value={p.bullet.shotDataId}
-            options={BULLET_PRESETS.map((b) => ({ value: b.shotDataId, label: b.label }))}
+            value={p.bullet.graphic}
+            options={BULLET_PRESETS.map((b) => ({ value: b.name, label: b.label }))}
             onChange={(v) => {
-              const preset = BULLET_PRESETS.find((b) => b.shotDataId === v)
+              const preset = BULLET_PRESETS.find((b) => b.name === v)
               if (preset)
                 setBullet({
-                  shotDataId: preset.shotDataId,
+                  graphic: preset.name,
                   color: preset.color,
-                  graphic: preset.label,
+                  shotDataId: suggestShotDataId(preset.name, p.bullet.shape),
                 })
             }}
           />
@@ -462,6 +488,10 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
             onChange={(e) => setBullet({ shotDataId: e.target.value })}
           />
         </Field>
+        <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+          弾の形はプレビュー用です。ph3 で実際に描かれる絵は ShotDataID
+          で決まるので、自分の Default_ShotConst.txt にあわせて書き換えてください。
+        </p>
         <Field label="速度">
           <NumField value={p.bullet.speed} step={0.1} onChange={(v) => setBullet({ speed: v })} />
         </Field>

@@ -35,9 +35,28 @@ export interface KeyframeChannels {
 
 export type BlendMode = 'alpha' | 'add' | 'multiply'
 
+/**
+ * Bullet silhouettes modelled on 弾幕風 ph3's stock shot graphics.
+ * Purely a preview concept — what ph3 actually draws is decided by
+ * `shotDataId`, which stays hand-editable.
+ */
+export type BulletShape =
+  | 'ball' // 小弾
+  | 'ballLarge' // 大弾
+  | 'ring' // 中弾
+  | 'orb' // 光玉
+  | 'scale' // 鱗弾
+  | 'rice' // 米弾
+  | 'ofuda' // 札
+  | 'ellipse' // 楕円弾
+  | 'star' // 星弾
+  | 'butterfly' // 蝶弾
+  | 'knife' // ナイフ弾
+
 export interface BulletDef {
   shotDataId: string
   graphic: string
+  shape: BulletShape
   color: string
   speed: number
   speedRand: number

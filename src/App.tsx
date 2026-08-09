@@ -6,6 +6,7 @@ import { ObjectPanel } from './ui/ObjectPanel'
 import { PatternLibrary } from './ui/PatternLibrary'
 import { Preview } from './ui/Preview'
 import { Properties } from './ui/Properties'
+import { SampleDialog } from './ui/SampleDialog'
 import { SettingsDialog } from './ui/SettingsDialog'
 import { Timeline } from './ui/Timeline'
 import { TopBar } from './ui/TopBar'
@@ -129,6 +130,7 @@ export default function App() {
       </main>
 
       <SettingsDialog />
+      <SampleDialog />
     </div>
   )
 }

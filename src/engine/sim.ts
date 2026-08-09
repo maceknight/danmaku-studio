@@ -207,6 +207,7 @@ export class Simulator {
     b.additive = bd.blend === 'add'
     b.delay = bd.delay
     b.hitbox = bd.hitboxRadius
+    b.shape = bd.shape
     b.laserLength = p.laserLength
     b.laserWidth = p.laserWidth
     b.patternIdx = patternIdx

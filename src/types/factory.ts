@@ -1,13 +1,14 @@
 import type {
   BulletDef,
+  BulletShape,
   EmitterDef,
   Modifier,
   ModifierType,
   Pattern,
   PatternType,
-  Project,
   SoundDef,
 } from './dmk'
+import { suggestShotDataId } from './shapes'
 
 let counter = 0
 export function uid(prefix = 'id'): string {
@@ -27,15 +28,16 @@ export const CLIP_COLORS = [
   '#facc15',
 ]
 
-export const BULLET_PRESETS: { label: string; shotDataId: string; color: string }[] = [
-  { label: '赤', shotDataId: 'RED01', color: '#f43f5e' },
-  { label: '橙', shotDataId: 'ORANGE01', color: '#fb923c' },
-  { label: '黄', shotDataId: 'YELLOW01', color: '#facc15' },
-  { label: '緑', shotDataId: 'GREEN01', color: '#4ade80' },
-  { label: '水', shotDataId: 'SKY01', color: '#38bdf8' },
-  { label: '青', shotDataId: 'BLUE01', color: '#6366f1' },
-  { label: '紫', shotDataId: 'PURPLE01', color: '#a855f7' },
-  { label: '白', shotDataId: 'WHITE01', color: '#e2e8f0' },
+/** `name` is the ph3 colour prefix used to build a ShotDataID (RED + 01). */
+export const BULLET_PRESETS: { label: string; name: string; color: string }[] = [
+  { label: '赤', name: 'RED', color: '#f43f5e' },
+  { label: '橙', name: 'ORANGE', color: '#fb923c' },
+  { label: '黄', name: 'YELLOW', color: '#facc15' },
+  { label: '緑', name: 'GREEN', color: '#4ade80' },
+  { label: '水', name: 'SKY', color: '#38bdf8' },
+  { label: '青', name: 'BLUE', color: '#6366f1' },
+  { label: '紫', name: 'PURPLE', color: '#a855f7' },
+  { label: '白', name: 'WHITE', color: '#e2e8f0' },
 ]
 
 export const PATTERN_LABELS: Record<PatternType, string> = {
@@ -87,7 +89,8 @@ export const PATTERN_CATEGORY: Record<PatternType, '基本' | '東方風' | 'CAV
 export function defaultBullet(): BulletDef {
   return {
     shotDataId: 'PURPLE01',
-    graphic: '紫',
+    graphic: 'PURPLE',
+    shape: 'ball',
     color: '#a855f7',
     speed: 3,
     speedRand: 0,
@@ -202,6 +205,16 @@ export function defaultPattern(
   }
 }
 
+/** Apply a colour preset + silhouette to a pattern, keeping ShotDataID in sync. */
+export function styleBullet(p: Pattern, colorName: string, shape: BulletShape): Pattern {
+  const preset = BULLET_PRESETS.find((b) => b.name === colorName)
+  p.bullet.graphic = colorName
+  p.bullet.shape = shape
+  if (preset) p.bullet.color = preset.color
+  p.bullet.shotDataId = suggestShotDataId(colorName, shape)
+  return p
+}
+
 export function defaultEmitter(name: string, x = 0, y = -120): EmitterDef {
   return {
     id: uid('emt'),
@@ -229,72 +242,5 @@ export function defaultSound(name: string, startFrame = 0): SoundDef {
     fadeOut: 0,
     startFrame,
     endFrame: startFrame + 300,
-  }
-}
-
-export function createProject(): Project {
-  const boss = defaultEmitter('Boss Main', 0, -140)
-  const spiral = defaultPattern('spiral', 30, 0)
-  spiral.endFrame = 570
-  spiral.bullet.shotDataId = 'PURPLE01'
-  spiral.bullet.color = '#c084fc'
-
-  const ring = defaultPattern('ring', 60, 1)
-  ring.endFrame = 600
-  ring.bullet.shotDataId = 'RED01'
-  ring.bullet.color = '#f87171'
-
-  const laser = defaultPattern('laser', 120, 2)
-  laser.endFrame = 500
-  laser.interval = 90
-  laser.bullet.shotDataId = 'ORANGE01'
-  laser.bullet.color = '#fb923c'
-
-  const wave = defaultPattern('wave', 90, 3)
-  wave.endFrame = 480
-  wave.bullet.shotDataId = 'SKY01'
-  wave.bullet.color = '#2dd4bf'
-
-  boss.patterns = [spiral, ring, laser, wave]
-  boss.keys.x = [
-    { id: uid('kf'), frame: 0, value: -90, ease: 'easeInOut' },
-    { id: uid('kf'), frame: 300, value: 90, ease: 'easeInOut' },
-    { id: uid('kf'), frame: 600, value: -90, ease: 'easeInOut' },
-  ]
-
-  const subA = defaultEmitter('Sub Emitter A', -110, -60)
-  const random = defaultPattern('random', 240, 4)
-  random.endFrame = 600
-  random.bullet.shotDataId = 'GREEN01'
-  random.bullet.color = '#84cc16'
-  subA.patterns = [random]
-
-  const subB = defaultEmitter('Sub Emitter B', 110, -60)
-  const flower = defaultPattern('flower', 420, 5)
-  flower.endFrame = 600
-  flower.bullet.shotDataId = 'PURPLE01'
-  flower.bullet.color = '#f472b6'
-  subB.patterns = [flower]
-
-  const bgm = defaultSound('BGM', 0)
-  bgm.loop = true
-  bgm.endFrame = 600
-
-  return {
-    version: 2,
-    name: '紅魔館ステージ_パターン01',
-    settings: {
-      fps: 60,
-      duration: 600,
-      stageWidth: 384,
-      stageHeight: 448,
-      seed: 20260809,
-      playerX: 0,
-      playerY: 170,
-      bossName: 'Boss',
-      bossLife: 2000,
-    },
-    emitters: [boss, subA, subB],
-    sounds: [bgm],
   }
 }

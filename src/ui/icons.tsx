@@ -1,4 +1,6 @@
-import type { PatternType } from '../types/dmk'
+import { useEffect, useRef } from 'react'
+import type { BulletShape, PatternType } from '../types/dmk'
+import { SHAPES, traceShape } from '../types/shapes'
 
 const S = ({ children, size = 16 }: { children: React.ReactNode; size?: number }) => (
   <svg
@@ -292,6 +294,43 @@ function dots(type: PatternType): { x: number; y: number; r: number }[] {
       break
   }
   return out
+}
+
+/**
+ * Bullet silhouette preview. Shares `traceShape` with the renderer so the
+ * picker always matches what the stage draws.
+ */
+export function ShapeGlyph({ shape, size = 18 }: { shape: BulletShape; size?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const c = ref.current
+    if (!c) return
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const spec = SHAPES[shape]
+    const w = size
+    const h = size / Math.max(1, spec.aspect)
+    c.width = w * dpr
+    c.height = size * dpr
+    c.style.width = `${w}px`
+    c.style.height = `${size}px`
+    const ctx = c.getContext('2d')!
+    ctx.scale(dpr, dpr)
+    const color = getComputedStyle(c).color || '#7c5cff'
+
+    const cx = w / 2
+    const cy = size / 2
+    const rx = (w / 2) * 0.92
+    const ry = (h / 2) * 0.92
+    ctx.fillStyle = color
+    traceShape(ctx, shape, cx, cy, rx, ry)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    traceShape(ctx, shape, cx, cy, rx * spec.coreRatio, ry * spec.coreRatio)
+    ctx.fill()
+  }, [shape, size])
+
+  return <canvas ref={ref} aria-hidden />
 }
 
 export function PatternGlyph({ type, size = 44 }: { type: PatternType; size?: number }) {
