@@ -7,8 +7,12 @@ import tailwindcss from '@tailwindcss/vite'
 // any working directory.
 const root = fileURLToPath(new URL('.', import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root,
+  // GitHub Pages serves this project under /danmaku-studio/; the dev server
+  // serves it from the origin root.
+  base: command === 'build' ? '/danmaku-studio/' : '/',
   plugins: [react(), tailwindcss()],
   server: { port: 5183 },
-})
+  build: { outDir: 'dist', emptyOutDir: true },
+}))
