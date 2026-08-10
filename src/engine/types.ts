@@ -27,6 +27,8 @@ export interface SimBullet {
   hitbox: number
   /** BulletShape — kept as a plain string so the engine stays UI-agnostic */
   shape: string
+  /** numeric ph3 shot id when a shot sheet is loaded, else 0 */
+  shotId: number
   /** max length; loose lasers grow up to this */
   laserLength: number
   laserWidth: number
@@ -83,6 +85,7 @@ export function makeBullet(): SimBullet {
     delay: 0,
     hitbox: 4,
     shape: 'ball',
+    shotId: 0,
     laserLength: 0,
     laserWidth: 0,
     telegraph: 0,

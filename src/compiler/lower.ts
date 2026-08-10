@@ -1,4 +1,10 @@
-import { sortKeys, type Modifier, type Pattern, type Project } from '../types/dmk'
+import {
+  DEFAULT_SHOT_CONST_INCLUDE,
+  sortKeys,
+  type Modifier,
+  type Pattern,
+  type Project,
+} from '../types/dmk'
 import type {
   ControlTaskNode,
   MoveSegment,
@@ -158,6 +164,8 @@ export function lower(project: Project): TimelineAst {
     bossLife: project.settings.bossLife,
     bossX: boss.x,
     bossY: boss.y,
+    shotConstInclude:
+      project.settings.shotConstInclude?.trim() || DEFAULT_SHOT_CONST_INCLUDE,
     patternTasks,
     moveTasks,
     controlTasks,

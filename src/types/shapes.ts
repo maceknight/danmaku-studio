@@ -11,49 +11,105 @@ export interface ShapeSpec {
   /** white core as a fraction of the outer silhouette; 0 = no core */
   coreRatio: number
   /**
-   * Suffix appended to the colour name to build a ShotDataID, e.g. RED01.
+   * Constant-name prefix used to build a ShotDataID: `${prefix}_${COLOUR}`,
+   * e.g. `BGW_BALL_S` + `RED` → `BGW_BALL_S_RED`.
    *
-   * The numbering follows the layout most Default_ShotConst.txt files use, but
-   * it is NOT guaranteed — shot data is per-project in ph3. Treat it as a
-   * starting point and check against your own definition file; the ShotDataID
-   * field stays editable for exactly this reason.
+   * These match the bundled `shotdata/bullet00` definition, which supplies all
+   * eight colours for every shape here. Point the editor at a different sheet
+   * and the names change — which is why the ShotDataID field stays editable.
    */
-  idSuffix: string
+  constPrefix: string
 }
 
 export const SHAPES: Record<BulletShape, ShapeSpec> = {
-  ball: { label: '小弾', radius: 5.2, aspect: 1, directional: false, coreRatio: 0.52, idSuffix: '01' },
-  ring: { label: '中弾', radius: 7.5, aspect: 1, directional: false, coreRatio: 0.62, idSuffix: '02' },
-  scale: { label: '鱗弾', radius: 6.5, aspect: 1.5, directional: true, coreRatio: 0.5, idSuffix: '03' },
-  rice: { label: '米弾', radius: 5, aspect: 2.1, directional: true, coreRatio: 0.5, idSuffix: '04' },
-  ofuda: { label: '札', radius: 7, aspect: 1.9, directional: true, coreRatio: 0.55, idSuffix: '05' },
+  ball: {
+    label: '小弾',
+    radius: 5.2,
+    aspect: 1,
+    directional: false,
+    coreRatio: 0.52,
+    constPrefix: 'BGW_BALL_S',
+  },
+  ring: {
+    label: '中弾',
+    radius: 7.5,
+    aspect: 1,
+    directional: false,
+    coreRatio: 0.62,
+    constPrefix: 'BGW_BALL_M',
+  },
+  scale: {
+    label: '鱗弾',
+    radius: 6.5,
+    aspect: 1.5,
+    directional: true,
+    coreRatio: 0.5,
+    constPrefix: 'BGW_SCALE',
+  },
+  rice: {
+    label: '米弾',
+    radius: 5,
+    aspect: 2.1,
+    directional: true,
+    coreRatio: 0.5,
+    constPrefix: 'BGW_RICE_S',
+  },
+  ofuda: {
+    label: '札',
+    radius: 7,
+    aspect: 1.9,
+    directional: true,
+    coreRatio: 0.55,
+    constPrefix: 'BGW_BILL',
+  },
   ballLarge: {
     label: '大弾',
     radius: 11,
     aspect: 1,
     directional: false,
     coreRatio: 0.5,
-    idSuffix: '11',
+    constPrefix: 'BGW_BALL_L',
   },
-  orb: { label: '光玉', radius: 9, aspect: 1, directional: false, coreRatio: 0.66, idSuffix: '12' },
+  orb: {
+    label: '光玉',
+    radius: 9,
+    aspect: 1,
+    directional: false,
+    coreRatio: 0.66,
+    constPrefix: 'BGW_LIGHT_L',
+  },
   ellipse: {
     label: '楕円弾',
     radius: 6.5,
     aspect: 1.7,
     directional: true,
     coreRatio: 0.55,
-    idSuffix: '13',
+    constPrefix: 'BGW_RICE_M',
   },
-  star: { label: '星弾', radius: 8, aspect: 1, directional: false, coreRatio: 0.45, idSuffix: '21' },
+  star: {
+    label: '星弾',
+    radius: 8,
+    aspect: 1,
+    directional: false,
+    coreRatio: 0.45,
+    constPrefix: 'BGW_STAR_M',
+  },
   butterfly: {
     label: '蝶弾',
     radius: 8,
     aspect: 1.3,
     directional: true,
     coreRatio: 0.4,
-    idSuffix: '31',
+    constPrefix: 'BGW_BUTTERFLY',
   },
-  knife: { label: 'ナイフ', radius: 7, aspect: 2.6, directional: true, coreRatio: 0.42, idSuffix: '41' },
+  knife: {
+    label: 'ナイフ',
+    radius: 7,
+    aspect: 2.6,
+    directional: true,
+    coreRatio: 0.42,
+    constPrefix: 'BGW_KNIFE',
+  },
 }
 
 export const SHAPE_ORDER: BulletShape[] = [
@@ -70,9 +126,9 @@ export const SHAPE_ORDER: BulletShape[] = [
   'knife',
 ]
 
-/** Suggested ph3 constant for a colour + shape pair, e.g. ("RED", 'rice') → RED04. */
+/** ph3 constant for a colour + shape pair, e.g. ("RED", 'rice') → BGW_RICE_S_RED. */
 export function suggestShotDataId(colorName: string, shape: BulletShape): string {
-  return `${colorName}${SHAPES[shape].idSuffix}`
+  return `${SHAPES[shape].constPrefix}_${colorName}`
 }
 
 /**

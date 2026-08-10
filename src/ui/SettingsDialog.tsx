@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore'
-import { FPS } from '../types/dmk'
+import { DEFAULT_SHOT_CONST_INCLUDE, FPS } from '../types/dmk'
 import { Btn, Field, NumField, Select } from './widgets'
 
 /** Project + editor preferences. Theme lives here as well as in the top bar. */
@@ -8,6 +8,8 @@ export function SettingsDialog() {
   const project = useStore((s) => s.project)
   const theme = useStore((s) => s.theme)
   const timeUnit = useStore((s) => s.timeUnit)
+  const sheetName = useStore((s) => s.shotSheetName)
+  const sheetCount = useStore((s) => s.shotSheet?.shots.size ?? 0)
   const s = useStore.getState
   if (!open) return null
   const st = project.settings
@@ -124,6 +126,35 @@ export function SettingsDialog() {
                 onChange={(v) => s().mutate((p) => void (p.settings.bossLife = Math.round(v)))}
               />
             </Field>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-[var(--accent-ink)]">ショットデータ</h3>
+            <Field label="#include">
+              <input
+                type="text"
+                value={st.shotConstInclude ?? ''}
+                placeholder={DEFAULT_SHOT_CONST_INCLUDE}
+                onChange={(e) =>
+                  s().mutate((p) => void (p.settings.shotConstInclude = e.target.value))
+                }
+              />
+            </Field>
+            <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+              ShotDataID に定数名を使う場合、その定数を定義したファイルを
+              出力スクリプトが `#include` している必要があります。
+              {sheetName ? (
+                <>
+                  <br />
+                  読み込み中のショットデータ: <b>{sheetName}</b>（{sheetCount} 件）
+                </>
+              ) : (
+                <>
+                  <br />
+                  ショットデータ未読込のため、プレビューは内蔵の弾シルエットで描画中。
+                </>
+              )}
+            </p>
           </section>
 
           <section className="space-y-1.5">

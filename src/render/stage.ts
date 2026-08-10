@@ -10,7 +10,15 @@ import {
 } from 'pixi.js'
 import type { SimBullet, SimSnapshotView } from '../engine/types'
 import type { BulletShape, ProjectSettings } from '../types/dmk'
+import { shotRect, type ShotSheet } from '../io/shotData'
 import { SHAPES, traceShape } from '../types/shapes'
+
+interface SheetBucket {
+  texture: Texture
+  container: Container
+  sprites: Sprite[]
+  used: number
+}
 
 interface ShapeBucket {
   rimTexture: Texture
@@ -81,8 +89,14 @@ export class StageRenderer {
   private markers: { g: Graphics; label: Text }[] = []
   /** one bucket per shape so each shape stays a single draw batch */
   private buckets = new Map<BulletShape, ShapeBucket>()
+  /** real ph3 sprites, one bucket per shot id (all share the sheet texture) */
+  private sheetLayer = new Container()
+  private sheetBuckets = new Map<number, SheetBucket>()
+  private sheetBase: Texture | null = null
+  private sheet: ShotSheet | null = null
   private resizeObserver: ResizeObserver | null = null
   private host: HTMLDivElement | null = null
+  private destroyed = false
   private lastW = 0
   private lastH = 0
   private ready = false
@@ -102,6 +116,9 @@ export class StageRenderer {
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
       preference: 'webgl',
+      // resizeTo also wires up Pixi's own resize plugin; dropping it leaves the
+      // plugin half-initialised and destroy() then throws.
+      resizeTo: host,
       width: Math.max(1, host.clientWidth),
       height: Math.max(1, host.clientHeight),
     })
@@ -123,6 +140,7 @@ export class StageRenderer {
       this.laserLayer,
       this.rimLayer,
       this.coreLayer,
+      this.sheetLayer,
       this.hitboxLayer,
       this.guideLayer,
       this.markerLayer,
@@ -131,11 +149,21 @@ export class StageRenderer {
   }
 
   destroy() {
+    if (this.destroyed) return
+    this.destroyed = true
     this.ready = false
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.host = null
-    this.app.destroy(true, { children: true, texture: true })
+    this.sheetBuckets.clear()
+    try {
+      // Pixi can throw here (e.g. tearing down a half-initialised plugin). A
+      // failure to release GPU objects must not break React's cleanup chain,
+      // or every effect queued after this one silently stops running.
+      this.app.destroy(true, { children: true, texture: true })
+    } catch (err) {
+      console.warn('StageRenderer.destroy', err)
+    }
   }
 
   get isReady() {
@@ -168,6 +196,60 @@ export class StageRenderer {
     traceShape(ctx, shape, w / 2, h / 2, rx, ry)
     ctx.fill()
     return Texture.from(c)
+  }
+
+  /**
+   * Adopt a parsed ph3 shot sheet. From here on any bullet whose ShotDataID
+   * resolves to an id in this sheet is drawn with the real sprite instead of a
+   * procedural silhouette — what you see is what ph3 will draw.
+   */
+  setShotSheet(sheet: ShotSheet | null, image: HTMLImageElement | null) {
+    for (const b of this.sheetBuckets.values()) b.container.destroy({ children: true })
+    this.sheetBuckets.clear()
+    // Don't destroy the old base texture: Texture.from() hands back a cached
+    // instance that other renderers (and a remount) may still be using.
+    this.sheetBase = image ? Texture.from(image) : null
+    this.sheet = image ? sheet : null
+  }
+
+  get hasShotSheet() {
+    return this.sheet !== null && this.sheetBase !== null
+  }
+
+  private sheetBucket(shotId: number): SheetBucket | null {
+    const existing = this.sheetBuckets.get(shotId)
+    if (existing) return existing
+    const shot = this.sheet?.shots.get(shotId)
+    const base = this.sheetBase
+    if (!shot || !base) return null
+    const r = shotRect(shot)
+    if (!r) return null
+
+    const left = Math.min(r.left, r.right)
+    const top = Math.min(r.top, r.bottom)
+    const w = Math.abs(r.right - r.left)
+    const h = Math.abs(r.bottom - r.top)
+    if (w <= 0 || h <= 0) return null
+
+    const container = new Container()
+    this.sheetLayer.addChild(container)
+    const bucket: SheetBucket = {
+      texture: new Texture({ source: base.source, frame: new Rectangle(left, top, w, h) }),
+      container,
+      sprites: [],
+      used: 0,
+    }
+    this.sheetBuckets.set(shotId, bucket)
+    return bucket
+  }
+
+  /** Sprite rotation for a sheet shot, honouring fixed_angle / angular_velocity. */
+  private sheetRotation(shotId: number, travelAngleDeg: number, age: number): number {
+    const shot = this.sheet?.shots.get(shotId)
+    if (!shot) return 0
+    const spin = shot.angularVelocity * age
+    const base = shot.fixedAngle ? 0 : travelAngleDeg + 90
+    return ((base + spin) * Math.PI) / 180
   }
 
   private bucket(shape: BulletShape): ShapeBucket {
@@ -347,6 +429,7 @@ export class StageRenderer {
     this.trailLayer.clear()
     this.hitboxLayer.clear()
     for (const b of this.buckets.values()) b.used = 0
+    for (const b of this.sheetBuckets.values()) b.used = 0
 
     for (let i = 0; i < bullets.length; i++) {
       const b = bullets[i]
@@ -361,6 +444,33 @@ export class StageRenderer {
           .moveTo(b.px - (b.x - b.px) * 5, b.py - (b.y - b.py) * 5)
           .lineTo(b.x, b.y)
           .stroke({ color: b.color, width: 1.5 * b.scale, alpha: 0.18 * b.alpha })
+      }
+
+      // Real ph3 sprite when the ShotDataID resolved against a loaded sheet.
+      // These are already coloured, so no tint and no white core overlay.
+      const sheetBucket = b.shotId > 0 ? this.sheetBucket(b.shotId) : null
+      if (sheetBucket) {
+        const si = sheetBucket.used
+        let sp = sheetBucket.sprites[si]
+        if (!sp) {
+          sp = new Sprite(sheetBucket.texture)
+          sp.anchor.set(0.5)
+          sheetBucket.container.addChild(sp)
+          sheetBucket.sprites[si] = sp
+        }
+        const spawning = b.delay > 0
+        sp.visible = true
+        sp.x = b.x
+        sp.y = b.y
+        sp.rotation = this.sheetRotation(b.shotId, b.angle, b.age)
+        sp.scale.set(b.scale * (spawning ? 1.7 + b.delay * 0.07 : 1))
+        sp.alpha = spawning ? 0.35 : b.alpha
+        sp.blendMode = b.additive ? 'add' : 'normal'
+        sheetBucket.used++
+        if (opts.showHitbox && !spawning) {
+          this.hitboxLayer.circle(b.x, b.y, b.hitbox * b.scale)
+        }
+        continue
       }
 
       const shape = b.shape as BulletShape
@@ -417,6 +527,9 @@ export class StageRenderer {
         bucket.rims[i].visible = false
         bucket.cores[i].visible = false
       }
+    }
+    for (const bucket of this.sheetBuckets.values()) {
+      for (let i = bucket.used; i < bucket.sprites.length; i++) bucket.sprites[i].visible = false
     }
   }
 

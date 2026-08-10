@@ -213,7 +213,15 @@ export interface ProjectSettings {
   playerY: number
   bossName: string
   bossLife: number
+  /**
+   * Path emitted as `#include` in the exported script. ShotDataID names only
+   * mean something to ph3 if the file that defines them is included, so this
+   * has to travel with the project.
+   */
+  shotConstInclude: string
 }
+
+export const DEFAULT_SHOT_CONST_INCLUDE = 'script/default_system/Default_ShotConst.txt'
 
 export interface Project {
   version: 2

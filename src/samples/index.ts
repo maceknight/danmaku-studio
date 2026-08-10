@@ -51,6 +51,8 @@ function project(name: string, emitters: EmitterDef[], durationSec = 10): Projec
       playerY: 170,
       bossName: 'Boss',
       bossLife: 2000,
+      // the samples use the bundled bullet00 constant names
+      shotConstInclude: './lib/bullet/lib_bullet.dnh',
     },
     emitters,
     sounds: [bgm],

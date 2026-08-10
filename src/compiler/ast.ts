@@ -99,6 +99,7 @@ export interface TimelineAst {
   bossLife: number
   bossX: number
   bossY: number
+  shotConstInclude: string
   patternTasks: PatternTaskNode[]
   moveTasks: MoveTaskNode[]
   controlTasks: ControlTaskNode[]

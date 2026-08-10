@@ -13,6 +13,7 @@ import {
   type Project,
   type SoundDef,
 } from '../types/dmk'
+import type { ShotSheet } from '../io/shotData'
 import { createProject } from '../samples'
 import {
   defaultEmitter,
@@ -69,6 +70,11 @@ interface StoreState {
   showSamples: boolean
   /** which panel the narrow layout shows under the preview */
   mobileTab: MobileTab
+  /** parsed ph3 shot sheet, when one is loaded (session-only, never in .dmk) */
+  shotSheet: ShotSheet | null
+  shotSheetImage: HTMLImageElement | null
+  shotSheetName: string
+  shotSheetError: string | null
 
   // --- infrastructure -------------------------------------------------------
   mutate: (fn: (p: Project) => void) => void
@@ -101,6 +107,12 @@ interface StoreState {
   setShowSettings: (v: boolean) => void
   setShowSamples: (v: boolean) => void
   setMobileTab: (t: MobileTab) => void
+  setShotSheet: (
+    sheet: ShotSheet | null,
+    image: HTMLImageElement | null,
+    name: string,
+    error?: string | null,
+  ) => void
 
   // --- emitters -------------------------------------------------------------
   addEmitter: () => void
@@ -185,6 +197,10 @@ export const useStore = create<StoreState>((set, get) => ({
   showSettings: false,
   showSamples: false,
   mobileTab: 'timeline',
+  shotSheet: null,
+  shotSheetImage: null,
+  shotSheetName: '',
+  shotSheetError: null,
 
   // -------------------------------------------------------------------------
   mutate: (fn) =>
@@ -245,6 +261,15 @@ export const useStore = create<StoreState>((set, get) => ({
   setShowSettings: (showSettings) => set({ showSettings }),
   setShowSamples: (showSamples) => set({ showSamples }),
   setMobileTab: (mobileTab) => set({ mobileTab }),
+  setShotSheet: (shotSheet, shotSheetImage, shotSheetName, shotSheetError = null) =>
+    set((s) => ({
+      shotSheet,
+      shotSheetImage,
+      shotSheetName,
+      shotSheetError,
+      // bump so the preview rebuilds its textures and re-resolves shot ids
+      revision: s.revision + 1,
+    })),
 
   // -------------------------------------------------------------------------
   addEmitter: () => {

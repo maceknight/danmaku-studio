@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Simulator } from '../engine/sim'
 import { estimateFrames, type GifOptions, type GifProgress } from '../io/gifExport'
+import { resolveShotId } from '../io/shotData'
 import { StageRenderer } from '../render/stage'
 import { useStore, type PreviewTool } from '../store/useStore'
 import { formatTimecode } from '../types/dmk'
@@ -129,6 +130,7 @@ export function Preview() {
       activeSim = sim
 
       let lastRevision = -1
+      let lastSheet: unknown = undefined
       let lastTime = performance.now()
       let accumulator = 0
       let fpsAccum = 0
@@ -142,6 +144,12 @@ export function Preview() {
         if (recording) return
         const s = st()
 
+        if (s.shotSheet !== lastSheet) {
+          lastSheet = s.shotSheet
+          renderer.setShotSheet(s.shotSheet, s.shotSheetImage)
+          sim.resolveShotId = (id) => resolveShotId(st().shotSheet, id)
+          lastRevision = -1 // force a resim so bullets pick up their sprite
+        }
         if (s.revision !== lastRevision) {
           lastRevision = s.revision
           sim.setProject(s.project)

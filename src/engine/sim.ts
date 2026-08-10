@@ -54,6 +54,11 @@ export class Simulator {
   private emitterMarkers: EmitterMarker[] = []
   frame = -1
   lastStepMs = 0
+  /**
+   * Injected by the host so bullets can carry the numeric ph3 shot id without
+   * the engine having to know anything about sprite sheets or the DOM.
+   */
+  resolveShotId: (shotDataId: string) => number = () => 0
 
   constructor(project: Project, capacity = 12000) {
     this.compiled = compile(project)
@@ -214,6 +219,7 @@ export class Simulator {
     b.delay = b.kind === 1 ? b.telegraph : bd.delay
     b.hitbox = bd.hitboxRadius
     b.shape = bd.shape
+    b.shotId = this.resolveShotId(bd.shotDataId)
     b.laserLength = p.laserLength
     b.laserWidth = p.laserWidth
     b.patternIdx = patternIdx

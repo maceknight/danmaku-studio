@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { audioEngine } from './audio/engine'
+import { loadShotSheet } from './io/shotData'
 import { useStore, type MobileTab } from './store/useStore'
 import { useIsNarrow } from './ui/useMediaQuery'
 import { ExportPanel } from './ui/ExportPanel'
@@ -76,6 +77,26 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem(THEME_KEY)
     if (saved === 'dark' || saved === 'light') useStore.getState().setTheme(saved)
+  }, [])
+
+  // Bundled ph3 shot sheet — makes the preview draw the real sprites.
+  useEffect(() => {
+    let cancelled = false
+    const base = import.meta.env.BASE_URL
+    loadShotSheet(
+      `${base}shotdata/bullet00.dnh`,
+      `${base}shotdata/bullet00_const.dnh`,
+      `${base}shotdata/bullet00.png`,
+    )
+      .then(({ sheet, image }) => {
+        if (!cancelled) useStore.getState().setShotSheet(sheet, image, 'bullet00')
+      })
+      .catch((err: Error) => {
+        if (!cancelled) useStore.getState().setShotSheet(null, null, '', err.message)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
