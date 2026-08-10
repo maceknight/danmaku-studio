@@ -13,7 +13,7 @@ import {
   type Project,
   type SoundDef,
 } from '../types/dmk'
-import type { ShotSheet } from '../io/shotData'
+import { shotFamilies, type ShotFamily, type ShotSheet } from '../io/shotData'
 import { createProject } from '../samples'
 import {
   defaultEmitter,
@@ -75,6 +75,8 @@ interface StoreState {
   shotSheetImage: HTMLImageElement | null
   shotSheetName: string
   shotSheetError: string | null
+  /** families × colours derived from the sheet — what the picker shows */
+  shotFamilies: ShotFamily[]
 
   // --- infrastructure -------------------------------------------------------
   mutate: (fn: (p: Project) => void) => void
@@ -111,6 +113,7 @@ interface StoreState {
     sheet: ShotSheet | null,
     image: HTMLImageElement | null,
     name: string,
+    labels?: Map<string, string>,
     error?: string | null,
   ) => void
 
@@ -201,6 +204,7 @@ export const useStore = create<StoreState>((set, get) => ({
   shotSheetImage: null,
   shotSheetName: '',
   shotSheetError: null,
+  shotFamilies: [],
 
   // -------------------------------------------------------------------------
   mutate: (fn) =>
@@ -261,12 +265,13 @@ export const useStore = create<StoreState>((set, get) => ({
   setShowSettings: (showSettings) => set({ showSettings }),
   setShowSamples: (showSamples) => set({ showSamples }),
   setMobileTab: (mobileTab) => set({ mobileTab }),
-  setShotSheet: (shotSheet, shotSheetImage, shotSheetName, shotSheetError = null) =>
+  setShotSheet: (shotSheet, shotSheetImage, shotSheetName, labels, shotSheetError = null) =>
     set((s) => ({
       shotSheet,
       shotSheetImage,
       shotSheetName,
       shotSheetError,
+      shotFamilies: shotFamilies(shotSheet, labels),
       // bump so the preview rebuilds its textures and re-resolves shot ids
       revision: s.revision + 1,
     })),

@@ -177,16 +177,111 @@ export function parseUserShotData(source: string): ShotSheet {
 /**
  * Reads a companion constants file (`let NAME = 12;`) so shots can be shown by
  * name instead of by number.
+ *
+ * Scans line by line rather than stripping comments, because the comment that
+ * introduces each group (`//　鱗弾`) is the only human-readable label the
+ * family has — worth keeping for the picker.
  */
-export function parseShotConstants(source: string): Map<number, string> {
-  const out = new Map<number, string>()
-  const re = /let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+)\s*;/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(stripComments(source)))) {
-    const id = Number(m[2])
-    if (!out.has(id)) out.set(id, m[1])
+export function parseShotConstants(source: string): {
+  names: Map<number, string>
+  /** constant-name prefix → the comment that introduced it */
+  labels: Map<string, string>
+} {
+  const names = new Map<number, string>()
+  const labels = new Map<string, string>()
+  const letRe = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+)\s*;/
+  let pendingLabel = ''
+
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (line.startsWith('//')) {
+      const text = line.replace(/^\/+/, '').replace(/[\s　]+/g, ' ').trim()
+      // section rules are just dashes; group headers carry an actual name
+      if (text && !/^[-=]+$/.test(text)) pendingLabel = text
+      continue
+    }
+    const m = line.match(letRe)
+    if (!m) continue
+    const [, name, idText] = m
+    const id = Number(idText)
+    if (!names.has(id)) names.set(id, name)
+    const family = familyOf(name)
+    if (family && pendingLabel && !labels.has(family)) labels.set(family, pendingLabel)
   }
-  return out
+  return { names, labels }
+}
+
+/** Colour suffixes shared by every family in a Danmakufu-style sheet. */
+export const SHOT_COLORS = [
+  'RED',
+  'ORANGE',
+  'YELLOW',
+  'GREEN',
+  'SKY',
+  'BLUE',
+  'PURPLE',
+  'WHITE',
+] as const
+
+export type ShotColor = (typeof SHOT_COLORS)[number]
+
+/** `BGW_BALL_S_RED` → `BGW_BALL_S`; returns '' when there is no colour suffix. */
+export function familyOf(constantName: string): string {
+  for (const c of SHOT_COLORS) {
+    if (constantName.endsWith(`_${c}`)) return constantName.slice(0, -(c.length + 1))
+  }
+  return ''
+}
+
+export function colorOf(constantName: string): ShotColor | null {
+  for (const c of SHOT_COLORS) {
+    if (constantName.endsWith(`_${c}`)) return c
+  }
+  return null
+}
+
+export interface ShotFamily {
+  /** constant prefix, e.g. BGW_BALL_S */
+  key: string
+  /** human label from the definition's comments, when there was one */
+  label: string
+  /** colour → shot id */
+  colors: Map<ShotColor, number>
+  /** id used for the thumbnail */
+  sampleId: number
+  /** true for the black-background variants (BGB_*) */
+  blackBacked: boolean
+}
+
+/**
+ * Collapse a 300-plus entry sheet into families × colours — roughly 30 icons
+ * and 8 swatches instead of one enormous grid.
+ */
+export function shotFamilies(sheet: ShotSheet | null, labels?: Map<string, string>): ShotFamily[] {
+  if (!sheet) return []
+  const out = new Map<string, ShotFamily>()
+  const ids = [...sheet.shots.keys()].sort((a, b) => a - b)
+
+  for (const id of ids) {
+    const name = sheet.shots.get(id)?.name
+    if (!name) continue
+    const key = familyOf(name)
+    const color = colorOf(name)
+    if (!key || !color) continue
+    let fam = out.get(key)
+    if (!fam) {
+      fam = {
+        key,
+        label: labels?.get(key) ?? key,
+        colors: new Map(),
+        sampleId: id,
+        blackBacked: key.startsWith('BGB'),
+      }
+      out.set(key, fam)
+    }
+    fam.colors.set(color, id)
+  }
+  return [...out.values()]
 }
 
 export function applyNames(sheet: ShotSheet, names: Map<number, string>) {
@@ -210,17 +305,22 @@ export async function loadShotSheet(
   definitionUrl: string,
   constantsUrl?: string,
   imageUrl?: string,
-): Promise<{ sheet: ShotSheet; image: HTMLImageElement }> {
+): Promise<{ sheet: ShotSheet; image: HTMLImageElement; labels: Map<string, string> }> {
   const defText = await fetch(definitionUrl).then((r) => {
     if (!r.ok) throw new Error(`定義ファイルを読めません: ${definitionUrl}`)
     return r.text()
   })
   const sheet = parseUserShotData(defText)
+  let labels = new Map<string, string>()
   if (constantsUrl) {
     const constText = await fetch(constantsUrl)
       .then((r) => (r.ok ? r.text() : ''))
       .catch(() => '')
-    if (constText) applyNames(sheet, parseShotConstants(constText))
+    if (constText) {
+      const parsed = parseShotConstants(constText)
+      applyNames(sheet, parsed.names)
+      labels = parsed.labels
+    }
   }
 
   // resolve the image relative to the definition file, as ph3 does
@@ -233,7 +333,7 @@ export async function loadShotSheet(
     el.onerror = () => reject(new Error(`画像を読めません: ${resolved}`))
     el.src = resolved
   })
-  return { sheet, image }
+  return { sheet, image, labels }
 }
 
 /** The drawable rect for a shot: static rect, or the first animation frame. */

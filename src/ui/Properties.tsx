@@ -12,8 +12,10 @@ import {
   type PatternType,
 } from '../types/dmk'
 import { BULLET_PRESETS, PATTERN_LABELS, PATTERN_LIBRARY } from '../types/factory'
+import { colorOf } from '../io/shotData'
 import { SHAPE_ORDER, SHAPES, suggestShotDataId } from '../types/shapes'
 import { ShapeGlyph } from './icons'
+import { ShotPicker } from './ShotPicker'
 import { Btn, Card, Field, Group, NumField, Select } from './widgets'
 
 const PATTERN_OPTIONS = PATTERN_LIBRARY.map((t) => ({ value: t, label: PATTERN_LABELS[t] }))
@@ -317,6 +319,7 @@ function EmitterProps({ emitterId }: { emitterId: string }) {
 function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: string }) {
   const p = useStore((st) => findPattern(st.project, emitterId, patternId))
   const sampleSeconds = useStore((st) => st.sampleSeconds)
+  const hasSheet = useStore((st) => st.shotFamilies.length > 0)
   const s = useStore.getState
   if (!p) return null
 
@@ -473,45 +476,62 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
       </Group>
 
       <Group title="弾 (Bullet)">
-        <Field label="弾の種類">
-          <div className="grid grid-cols-6 gap-1">
-            {SHAPE_ORDER.map((s) => (
-              <button
-                key={s}
-                title={`${SHAPES[s].label} — ${suggestShotDataId(p.bullet.graphic, s)}`}
-                onClick={() =>
-                  setBullet({
-                    shape: s,
-                    shotDataId: suggestShotDataId(p.bullet.graphic, s),
-                  })
-                }
-                className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
-                  p.bullet.shape === s
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                    : 'border-[var(--border)] hover:bg-[var(--hover)]'
-                }`}
-                style={{ color: p.bullet.color }}
-              >
-                <ShapeGlyph shape={s} size={18} />
-              </button>
-            ))}
-          </div>
-        </Field>
-        <Field label="色プリセット">
-          <Select
-            value={p.bullet.graphic}
-            options={BULLET_PRESETS.map((b) => ({ value: b.name, label: b.label }))}
-            onChange={(v) => {
-              const preset = BULLET_PRESETS.find((b) => b.name === v)
-              if (preset)
-                setBullet({
-                  graphic: preset.name,
-                  color: preset.color,
-                  shotDataId: suggestShotDataId(preset.name, p.bullet.shape),
-                })
+        {hasSheet ? (
+          <ShotPicker
+            value={p.bullet.shotDataId}
+            onChange={(shotDataId) => {
+              const color = colorOf(shotDataId)
+              const preset = color ? BULLET_PRESETS.find((b) => b.name === color) : undefined
+              setBullet({
+                shotDataId,
+                // keep graphic/color in sync so trails and lasers stay on tone
+                ...(preset ? { graphic: preset.name, color: preset.color } : {}),
+              })
             }}
           />
-        </Field>
+        ) : (
+          <>
+            <Field label="弾の種類">
+              <div className="grid grid-cols-6 gap-1">
+                {SHAPE_ORDER.map((s) => (
+                  <button
+                    key={s}
+                    title={`${SHAPES[s].label} — ${suggestShotDataId(p.bullet.graphic, s)}`}
+                    onClick={() =>
+                      setBullet({
+                        shape: s,
+                        shotDataId: suggestShotDataId(p.bullet.graphic, s),
+                      })
+                    }
+                    className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
+                      p.bullet.shape === s
+                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                        : 'border-[var(--border)] hover:bg-[var(--hover)]'
+                    }`}
+                    style={{ color: p.bullet.color }}
+                  >
+                    <ShapeGlyph shape={s} size={18} />
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="色プリセット">
+              <Select
+                value={p.bullet.graphic}
+                options={BULLET_PRESETS.map((b) => ({ value: b.name, label: b.label }))}
+                onChange={(v) => {
+                  const preset = BULLET_PRESETS.find((b) => b.name === v)
+                  if (preset)
+                    setBullet({
+                      graphic: preset.name,
+                      color: preset.color,
+                      shotDataId: suggestShotDataId(preset.name, p.bullet.shape),
+                    })
+                }}
+              />
+            </Field>
+          </>
+        )}
         <Field label="ShotDataID">
           <input
             type="text"
@@ -519,10 +539,6 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
             onChange={(e) => setBullet({ shotDataId: e.target.value })}
           />
         </Field>
-        <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
-          弾の形はプレビュー用です。ph3 で実際に描かれる絵は ShotDataID
-          で決まるので、自分の Default_ShotConst.txt にあわせて書き換えてください。
-        </p>
         <Field label="速度">
           <NumField value={p.bullet.speed} step={0.1} onChange={(v) => setBullet({ speed: v })} />
         </Field>

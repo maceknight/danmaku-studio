@@ -88,11 +88,11 @@ export default function App() {
       `${base}shotdata/bullet00_const.dnh`,
       `${base}shotdata/bullet00.png`,
     )
-      .then(({ sheet, image }) => {
-        if (!cancelled) useStore.getState().setShotSheet(sheet, image, 'bullet00')
+      .then(({ sheet, image, labels }) => {
+        if (!cancelled) useStore.getState().setShotSheet(sheet, image, 'bullet00', labels)
       })
       .catch((err: Error) => {
-        if (!cancelled) useStore.getState().setShotSheet(null, null, '', err.message)
+        if (!cancelled) useStore.getState().setShotSheet(null, null, '', undefined, err.message)
       })
     return () => {
       cancelled = true
