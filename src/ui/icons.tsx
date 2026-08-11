@@ -292,6 +292,44 @@ function dots(type: PatternType): { x: number; y: number; r: number }[] {
       for (let i = 0; i < 3; i++)
         for (let d = 1; d <= 4; d++) push(90 + (i - 1) * 11, 3 + d * 3.6, 1.4)
       break
+    case 'oval': {
+      const tilt = 30
+      for (let i = 0; i < 22; i++) {
+        const a = (i * 360) / 22
+        const psi = ((a - tilt) * Math.PI) / 180
+        const ratio = 1.9
+        const f = ratio / Math.sqrt(Math.cos(psi) ** 2 + ratio * ratio * Math.sin(psi) ** 2)
+        push(a, 9 * f, 1.4)
+      }
+      break
+    }
+    case 'polygon': {
+      const sides = 5
+      const step = (Math.PI * 2) / sides
+      for (let i = 0; i < 25; i++) {
+        const a = (i * 360) / 25
+        const psi = (a * Math.PI) / 180
+        const local = ((psi % step) + step) % step
+        push(a, 13 / Math.cos(local - step / 2), 1.3)
+      }
+      break
+    }
+    case 'rose':
+      for (let i = 0; i < 34; i++) {
+        const a = (i * 360) / 34
+        const f = 0.35 + 0.65 * Math.abs(Math.cos((4 * a * Math.PI) / 180))
+        push(a, 17 * f, 1.35)
+      }
+      break
+    case 'line':
+      for (let i = 0; i < 7; i++) {
+        const x = 8 + i * 5.3
+        for (let d = 0; d < 3; d++) out.push({ x, y: 16 + d * 7, r: 1.5 })
+      }
+      break
+    case 'whip':
+      for (let i = 0; i < 9; i++) push(-90 + i * 4, 4 + i * 1.9 + i * i * 0.16, 1.45)
+      break
   }
   return out
 }

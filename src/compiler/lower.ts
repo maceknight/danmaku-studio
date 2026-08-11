@@ -37,6 +37,12 @@ function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
     wavePeriod: p.wavePeriod,
     angleRandom: p.angleRandom,
     aimPlayer: p.aimPlayer,
+    ovalRatio: p.ovalRatio,
+    shapeTilt: p.shapeTilt,
+    polygonSides: Math.max(3, Math.round(p.polygonSides)),
+    rosePetals: Math.max(1, Math.round(p.rosePetals)),
+    lineSpacing: p.lineSpacing,
+    speedStep: p.speedStep,
     bullet: {
       shotDataId: p.bullet.shotDataId,
       speed: p.bullet.speed,

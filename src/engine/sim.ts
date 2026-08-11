@@ -343,6 +343,20 @@ export class Simulator {
             }
           }
           break
+        case 'graphic':
+          if (!(b.fired & bit)) {
+            b.fired |= bit
+            const next = this.resolveShotId(mod.text ?? '')
+            if (next > 0) b.shotId = next
+          }
+          break
+        case 'reaim':
+          if (!(b.fired & bit)) {
+            b.fired |= bit
+            const { playerX, playerY } = this.compiled.project.settings
+            b.angle = Math.atan2(playerY - b.y, playerX - b.x) * R2D
+          }
+          break
         case 'destroy':
           this.pool.release(index)
           return

@@ -53,6 +53,11 @@ export const PATTERN_LABELS: Record<PatternType, string> = {
   burst: 'Burst',
   laser: 'Laser',
   aim: 'Aim',
+  oval: 'Oval',
+  polygon: 'Polygon',
+  rose: 'Rose',
+  line: 'Line',
+  whip: 'Whip',
 }
 
 /** Order shown in the pattern library grid. */
@@ -69,6 +74,11 @@ export const PATTERN_LIBRARY: PatternType[] = [
   'burst',
   'laser',
   'aim',
+  'oval',
+  'polygon',
+  'rose',
+  'line',
+  'whip',
 ]
 
 export const PATTERN_CATEGORY: Record<PatternType, '基本' | '東方風' | 'CAVE風' | 'その他'> = {
@@ -76,13 +86,18 @@ export const PATTERN_CATEGORY: Record<PatternType, '基本' | '東方風' | 'CAV
   ring: '基本',
   nway: '基本',
   fan: '基本',
+  line: '基本',
   spiral: '東方風',
   flower: '東方風',
   wave: '東方風',
   cross: '東方風',
+  oval: '東方風',
+  rose: '東方風',
   burst: 'CAVE風',
   random: 'CAVE風',
   aim: 'CAVE風',
+  whip: 'CAVE風',
+  polygon: 'その他',
   laser: 'その他',
 }
 
@@ -134,6 +149,10 @@ export function defaultModifier(type: ModifierType): Modifier {
       return { ...base, at: 240 }
     case 'wait':
       return { ...base, at: 0, duration: 30 }
+    case 'graphic':
+      return { ...base, at: 60, text: '' }
+    case 'reaim':
+      return { ...base, at: 45 }
   }
 }
 
@@ -169,6 +188,13 @@ export function defaultPattern(
     wavePeriod: 60,
     angleRandom: 0,
     aimPlayer: false,
+
+    ovalRatio: 1.8,
+    shapeTilt: 30,
+    polygonSides: 5,
+    rosePetals: 4,
+    lineSpacing: 18,
+    speedStep: 0.35,
 
     bullet: defaultBullet(),
     modifiers: [],
@@ -211,6 +237,31 @@ export function defaultPattern(
       return { ...p, count: 4, interval: 12, angleStep: 3 }
     case 'burst':
       return { ...p, count: 40, interval: 120, angleSpread: 360, layers: 3, layerSpeedStep: 0.6 }
+    case 'oval':
+      return { ...p, count: 28, interval: 40, ovalRatio: 1.9, shapeTilt: 30, angleStep: 6 }
+    case 'polygon':
+      return { ...p, count: 30, interval: 45, polygonSides: 5, shapeTilt: 0, angleStep: 5 }
+    case 'rose':
+      return { ...p, count: 36, interval: 50, rosePetals: 4, shapeTilt: 0, angleStep: 9 }
+    case 'line':
+      return {
+        ...p,
+        count: 9,
+        interval: 35,
+        lineSpacing: 26,
+        angleBase: 90,
+        angleStep: 0,
+        bullet: { ...p.bullet, speed: 2.4 },
+      }
+    case 'whip':
+      return {
+        ...p,
+        count: 10,
+        interval: 20,
+        speedStep: 0.32,
+        angleStep: 13,
+        bullet: { ...p.bullet, speed: 1.4 },
+      }
     default:
       return p
   }

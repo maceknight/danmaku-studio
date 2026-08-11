@@ -84,6 +84,10 @@ export type ModifierType =
   | 'random'
   | 'destroy'
   | 'wait'
+  /** swap the shot graphic mid-flight (ph3: ObjShot_SetGraphic) */
+  | 'graphic'
+  /** re-aim at the player mid-flight (ph3: ObjMove_SetAngle) */
+  | 'reaim'
 
 export interface Modifier {
   id: string
@@ -95,6 +99,8 @@ export interface Modifier {
   duration: number
   amount: number
   amount2: number
+  /** ShotDataID for `graphic`; unused by the other kinds */
+  text?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +120,16 @@ export type PatternType =
   | 'cross'
   | 'burst'
   | 'fan'
+  /** 楕円 — ring squashed along one axis, tiltable */
+  | 'oval'
+  /** 多角形 — ring that traces a regular polygon */
+  | 'polygon'
+  /** 花弁 — rose curve, speed lobed by petal count */
+  | 'rose'
+  /** ライン — a straight wall of bullets, all travelling the same way */
+  | 'line'
+  /** 鞭 — one direction, speed ramped across the shot */
+  | 'whip'
 
 export interface Pattern {
   id: string
@@ -152,6 +168,20 @@ export interface Pattern {
   wavePeriod: number
   angleRandom: number
   aimPlayer: boolean
+
+  // --- shape-specific ------------------------------------------------------
+  /** oval: long axis ÷ short axis. 1 = a plain circle */
+  ovalRatio: number
+  /** oval / polygon / rose: rotation of the shape itself, in degrees */
+  shapeTilt: number
+  /** polygon: number of sides */
+  polygonSides: number
+  /** rose: petal count */
+  rosePetals: number
+  /** line: gap between neighbouring bullets */
+  lineSpacing: number
+  /** whip: speed added per bullet across the shot */
+  speedStep: number
 
   bullet: BulletDef
   modifiers: Modifier[]

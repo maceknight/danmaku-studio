@@ -28,6 +28,8 @@ const MODIFIER_TYPES: ModifierType[] = [
   'fade',
   'scale',
   'random',
+  'graphic',
+  'reaim',
   'destroy',
   'wait',
 ]
@@ -40,6 +42,8 @@ const MODIFIER_LABELS: Record<ModifierType, string> = {
   fade: 'フェード',
   scale: '拡縮',
   random: 'ランダム',
+  graphic: '弾を変える',
+  reaim: '自機へ再照準',
   destroy: '消滅',
   wait: '待機',
 }
@@ -52,9 +56,14 @@ const AMOUNT_LABELS: Record<ModifierType, [string, string | null]> = {
   fade: ['目標α', null],
   scale: ['目標倍率', null],
   random: ['速度±', '角度±°'],
+  graphic: ['—', null],
+  reaim: ['—', null],
   destroy: ['—', null],
   wait: ['—', null],
 }
+
+/** Modifiers whose only meaningful input is the frame it fires on. */
+const TIME_ONLY: ModifierType[] = ['graphic', 'reaim', 'destroy']
 
 const BLENDS: { value: BlendMode; label: string }[] = [
   { value: 'alpha', label: '通常' },
@@ -416,6 +425,61 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
         <Field label="拡がり角">
           <NumField value={p.angleSpread} suffix="°" onChange={(v) => set({ angleSpread: v })} />
         </Field>
+        {p.type === 'oval' && (
+          <>
+            <Field label="縦横比">
+              <NumField
+                value={p.ovalRatio}
+                step={0.1}
+                min={0.1}
+                onChange={(v) => set({ ovalRatio: v })}
+              />
+            </Field>
+            <Field label="傾き">
+              <NumField value={p.shapeTilt} suffix="°" onChange={(v) => set({ shapeTilt: v })} />
+            </Field>
+          </>
+        )}
+        {p.type === 'polygon' && (
+          <>
+            <Field label="辺の数">
+              <NumField
+                value={p.polygonSides}
+                min={3}
+                max={16}
+                onChange={(v) => set({ polygonSides: Math.round(v) })}
+              />
+            </Field>
+            <Field label="傾き">
+              <NumField value={p.shapeTilt} suffix="°" onChange={(v) => set({ shapeTilt: v })} />
+            </Field>
+          </>
+        )}
+        {p.type === 'rose' && (
+          <>
+            <Field label="花弁の数">
+              <NumField
+                value={p.rosePetals}
+                min={1}
+                max={16}
+                onChange={(v) => set({ rosePetals: Math.round(v) })}
+              />
+            </Field>
+            <Field label="傾き">
+              <NumField value={p.shapeTilt} suffix="°" onChange={(v) => set({ shapeTilt: v })} />
+            </Field>
+          </>
+        )}
+        {p.type === 'line' && (
+          <Field label="弾の間隔">
+            <NumField value={p.lineSpacing} onChange={(v) => set({ lineSpacing: v })} />
+          </Field>
+        )}
+        {p.type === 'whip' && (
+          <Field label="速度の増分">
+            <NumField value={p.speedStep} step={0.05} onChange={(v) => set({ speedStep: v })} />
+          </Field>
+        )}
         <Field label="レイヤー数">
           <NumField value={p.layers} min={1} max={16} onChange={(v) => set({ layers: Math.round(v) })} />
         </Field>
@@ -658,28 +722,55 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                   s().updateModifier(emitterId, patternId, m.id, { at: Math.round(v) })
                 }
               />
-              <MiniNum
-                label="継続F"
-                value={m.duration}
-                onChange={(v) =>
-                  s().updateModifier(emitterId, patternId, m.id, { duration: Math.round(v) })
-                }
-              />
-              <MiniNum
-                label={AMOUNT_LABELS[m.type][0]}
-                value={m.amount}
-                step={0.05}
-                onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { amount: v })}
-              />
-              {AMOUNT_LABELS[m.type][1] && (
-                <MiniNum
-                  label={AMOUNT_LABELS[m.type][1]!}
-                  value={m.amount2}
-                  step={0.05}
-                  onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { amount2: v })}
-                />
+              {!TIME_ONLY.includes(m.type) && (
+                <>
+                  <MiniNum
+                    label="継続F"
+                    value={m.duration}
+                    onChange={(v) =>
+                      s().updateModifier(emitterId, patternId, m.id, { duration: Math.round(v) })
+                    }
+                  />
+                  <MiniNum
+                    label={AMOUNT_LABELS[m.type][0]}
+                    value={m.amount}
+                    step={0.05}
+                    onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { amount: v })}
+                  />
+                  {AMOUNT_LABELS[m.type][1] && (
+                    <MiniNum
+                      label={AMOUNT_LABELS[m.type][1]!}
+                      value={m.amount2}
+                      step={0.05}
+                      onChange={(v) =>
+                        s().updateModifier(emitterId, patternId, m.id, { amount2: v })
+                      }
+                    />
+                  )}
+                </>
               )}
             </div>
+            {m.type === 'graphic' && (
+              <div className="mt-1.5">
+                {hasSheet ? (
+                  <ShotPicker
+                    value={m.text || p.bullet.shotDataId}
+                    onChange={(shotDataId) =>
+                      s().updateModifier(emitterId, patternId, m.id, { text: shotDataId })
+                    }
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={m.text ?? ''}
+                    placeholder="変更後の ShotDataID"
+                    onChange={(e) =>
+                      s().updateModifier(emitterId, patternId, m.id, { text: e.target.value })
+                    }
+                  />
+                )}
+              </div>
+            )}
           </div>
         ))}
         <Select

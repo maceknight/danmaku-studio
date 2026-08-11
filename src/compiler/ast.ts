@@ -36,6 +36,12 @@ export interface SpawnNode {
   wavePeriod: number
   angleRandom: number
   aimPlayer: boolean
+  ovalRatio: number
+  shapeTilt: number
+  polygonSides: number
+  rosePetals: number
+  lineSpacing: number
+  speedStep: number
   bullet: BulletNode
   laserType: LaserType
   laserLength: number

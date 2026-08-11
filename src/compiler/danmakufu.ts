@@ -67,6 +67,34 @@ function shotCreateCall(s: SpawnNode): string {
   return `CreateShotA1(ox, oy, spd, ang, ${b.shotDataId}, ${n(b.delay)})`
 }
 
+/**
+ * Speed multiplier expression, mirroring `shapeSpeedFactor` in the engine.
+ * ph3 trig works in degrees, which is why there is no radian conversion here.
+ */
+function speedFactorExpr(s: SpawnNode): string | null {
+  switch (s.patternType) {
+    case 'oval': {
+      const r = Math.max(0.05, s.ovalRatio)
+      return `${n(r)} / sqrt(cos(ang - ${n(s.shapeTilt)}) * cos(ang - ${n(
+        s.shapeTilt,
+      )}) + ${n(r * r)} * sin(ang - ${n(s.shapeTilt)}) * sin(ang - ${n(s.shapeTilt)}))`
+    }
+    case 'polygon': {
+      const sides = Math.max(3, Math.round(s.polygonSides))
+      const step = 360 / sides
+      return `1 / cos(((ang - ${n(s.shapeTilt)}) % ${n(step)} + ${n(step)}) % ${n(step)} - ${n(
+        step / 2,
+      )})`
+    }
+    case 'rose': {
+      const k = Math.max(1, Math.round(s.rosePetals))
+      return `0.35 + 0.65 * absolute(cos(${n(k)} * (ang - ${n(s.shapeTilt)})))`
+    }
+    default:
+      return null
+  }
+}
+
 /** Per-index angle expression, mirroring engine/patterns.ts. */
 function angleExpr(s: SpawnNode): string {
   switch (s.patternType) {
@@ -75,7 +103,13 @@ function angleExpr(s: SpawnNode): string {
     case 'flower':
     case 'burst':
     case 'spiral':
+    case 'oval':
+    case 'polygon':
+    case 'rose':
       return `angBase + (360 / ${n(s.count)}) * i`
+    case 'line':
+    case 'whip':
+      return 'angBase'
     case 'cross':
       return `angBase + 90 * (i % 4) + trunc(i / 4) * ${n(s.angleSpread / Math.max(1, s.count))}`
     case 'random':
@@ -109,12 +143,8 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
 
   const layered = s.layers > 1
   if (layered) w.open(`ascent(l in 0..${n(s.layers)}) {`)
-  const speedExpr = layered ? `${n(b.speed)} + ${n(s.layerSpeedStep)} * l` : n(b.speed)
-  w.line(
-    `let spd = ${speedExpr}${
-      b.speedRand > 0 ? ` + rand(${n(-b.speedRand)}, ${n(b.speedRand)})` : ''
-    };`,
-  )
+  const baseSpeed = layered ? `${n(b.speed)} + ${n(s.layerSpeedStep)} * l` : n(b.speed)
+  w.line(`let spdBase = ${baseSpeed};`)
 
   w.open(`ascent(i in 0..${n(s.count)}) {`)
   w.line(
@@ -122,7 +152,20 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
       s.angleRandom > 0 ? ` + rand(${n(-s.angleRandom)}, ${n(s.angleRandom)})` : ''
     };`,
   )
-  if (s.radius !== 0) {
+
+  // speed is per-index: shaped volleys bend the ring by varying it with angle
+  const factor = speedFactorExpr(s)
+  const parts = [factor ? `spdBase * (${factor})` : 'spdBase']
+  if (s.patternType === 'whip') parts.push(`${n(s.speedStep)} * i`)
+  if (b.speedRand > 0) parts.push(`rand(${n(-b.speedRand)}, ${n(b.speedRand)})`)
+  w.line(`let spd = ${parts.join(' + ')};`)
+
+  if (s.patternType === 'line') {
+    // spread the muzzle sideways rather than fanning the angles
+    w.line(`let side = (i - ${n((s.count - 1) / 2)}) * ${n(s.lineSpacing)};`)
+    w.line(`let ox = bx + cos(ang) * ${n(s.radius)} + cos(ang + 90) * side;`)
+    w.line(`let oy = by + sin(ang) * ${n(s.radius)} + sin(ang + 90) * side;`)
+  } else if (s.radius !== 0) {
     w.line(`let ox = bx + cos(ang) * ${n(s.radius)};`)
     w.line(`let oy = by + sin(ang) * ${n(s.radius)};`)
   } else {
@@ -261,6 +304,14 @@ function writeModifier(w: Writer, m: Modifier) {
       w.close()
       break
     }
+    case 'graphic':
+      if (m.text && m.text.trim()) w.line(`ObjShot_SetGraphic(obj, ${m.text.trim()});`)
+      break
+    case 'reaim':
+      w.line(
+        'ObjMove_SetAngle(obj, atan2(GetPlayerY() - ObjMove_GetY(obj), GetPlayerX() - ObjMove_GetX(obj)));',
+      )
+      break
     case 'destroy':
       w.line('Obj_Delete(obj);')
       w.line('return;')

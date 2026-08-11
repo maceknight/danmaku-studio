@@ -12,6 +12,39 @@ export interface SpawnSpec {
 const D2R = Math.PI / 180
 
 /**
+ * Speed multiplier that bends an otherwise round volley into a shape.
+ *
+ * A ring is only round because every bullet leaves at the same speed. Scale the
+ * speed by direction and the same ring traces an ellipse, a polygon or a rose —
+ * `psi` is the direction measured against the shape's own tilt.
+ */
+export function shapeSpeedFactor(p: Pattern, angleDeg: number): number {
+  const psi = (angleDeg - p.shapeTilt) * D2R
+  switch (p.type) {
+    case 'oval': {
+      const ratio = Math.max(0.05, p.ovalRatio)
+      const c = Math.cos(psi)
+      const s = Math.sin(psi)
+      return ratio / Math.sqrt(c * c + ratio * ratio * s * s)
+    }
+    case 'polygon': {
+      const n = Math.max(3, Math.round(p.polygonSides))
+      const step = (Math.PI * 2) / n
+      // distance from centre to the edge of a regular n-gon with apothem 1
+      const local = ((psi % step) + step) % step
+      return 1 / Math.cos(local - step / 2)
+    }
+    case 'rose': {
+      const k = Math.max(1, Math.round(p.rosePetals))
+      // keep a floor so petals pinch rather than collapse to zero speed
+      return 0.35 + 0.65 * Math.abs(Math.cos(k * psi))
+    }
+    default:
+      return 1
+  }
+}
+
+/**
  * Resolve one "shot" of a pattern into concrete spawn specs.
  *
  * `shotIndex` counts how many times this pattern has already fired inside the
@@ -46,7 +79,14 @@ export function resolveShot(
         case 'flower':
         case 'burst':
         case 'spiral':
+        case 'oval':
+        case 'polygon':
+        case 'rose':
           angle += (360 / count) * i
+          break
+        case 'line':
+        case 'whip':
+          // both fire in one direction; the spread is positional / in speed
           break
         case 'cross':
           angle += 90 * (i % 4) + Math.floor(i / 4) * (p.angleSpread / Math.max(1, count))
@@ -65,14 +105,21 @@ export function resolveShot(
       }
       if (p.angleRandom > 0) angle += rng.jitter(p.angleRandom)
 
-      const speed = layerSpeed + (p.bullet.speedRand > 0 ? rng.jitter(p.bullet.speedRand) : 0)
+      let speed = layerSpeed * shapeSpeedFactor(p, angle)
+      if (p.type === 'whip') speed += p.speedStep * i
+      if (p.bullet.speedRand > 0) speed += rng.jitter(p.bullet.speedRand)
+
       const rad = angle * D2R
-      out.push({
-        dx: Math.cos(rad) * p.radius,
-        dy: Math.sin(rad) * p.radius,
-        angle,
-        speed,
-      })
+      let dx = Math.cos(rad) * p.radius
+      let dy = Math.sin(rad) * p.radius
+      if (p.type === 'line') {
+        // spread the muzzle sideways instead of fanning the angles
+        const offset = (i - (count - 1) / 2) * p.lineSpacing
+        dx += Math.cos(rad + Math.PI / 2) * offset
+        dy += Math.sin(rad + Math.PI / 2) * offset
+      }
+
+      out.push({ dx, dy, angle, speed })
     }
   }
   return out
