@@ -99,7 +99,10 @@ export interface Modifier {
   duration: number
   amount: number
   amount2: number
-  /** ShotDataID for `graphic`; unused by the other kinds */
+  /**
+   * ShotDataID. `graphic` swaps the bullet to it; `split` gives it to the
+   * children. Empty means "keep whatever the pattern already uses".
+   */
   text?: string
 }
 
@@ -183,6 +186,13 @@ export interface Pattern {
   /** whip: speed added per bullet across the shot */
   speedStep: number
 
+  /**
+   * Left-right mirroring, applied within the one pattern so a tilted shape can
+   * flip side to side without duplicating the clip.
+   * none = as authored · alternate = flip every other shot · both = fire both
+   */
+  mirrorMode: MirrorMode
+
   bullet: BulletDef
   modifiers: Modifier[]
 
@@ -201,6 +211,8 @@ export interface Pattern {
  * ph3 の CreateLooseLaserA1 にあたる。
  */
 export type LaserType = 'straight' | 'loose'
+
+export type MirrorMode = 'none' | 'alternate' | 'both'
 
 // ---------------------------------------------------------------------------
 // Emitters (tree groups) / sounds

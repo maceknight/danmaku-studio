@@ -6,7 +6,7 @@
  * replace the generator.
  */
 
-import type { BlendMode, LaserType, Modifier, PatternType } from '../types/dmk'
+import type { BlendMode, LaserType, MirrorMode, Modifier, PatternType } from '../types/dmk'
 
 export interface BulletNode {
   shotDataId: string
@@ -42,6 +42,7 @@ export interface SpawnNode {
   rosePetals: number
   lineSpacing: number
   speedStep: number
+  mirrorMode: MirrorMode
   bullet: BulletNode
   laserType: LaserType
   laserLength: number

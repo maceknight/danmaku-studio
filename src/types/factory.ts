@@ -195,6 +195,7 @@ export function defaultPattern(
     rosePetals: 4,
     lineSpacing: 18,
     speedStep: 0.35,
+    mirrorMode: 'none',
 
     bullet: defaultBullet(),
     modifiers: [],

@@ -75,20 +75,20 @@ function speedFactorExpr(s: SpawnNode): string | null {
   switch (s.patternType) {
     case 'oval': {
       const r = Math.max(0.05, s.ovalRatio)
-      return `${n(r)} / sqrt(cos(ang - ${n(s.shapeTilt)}) * cos(ang - ${n(
+      return `${n(r)} / sqrt(cos(angRaw - ${n(s.shapeTilt)}) * cos(angRaw - ${n(
         s.shapeTilt,
-      )}) + ${n(r * r)} * sin(ang - ${n(s.shapeTilt)}) * sin(ang - ${n(s.shapeTilt)}))`
+      )}) + ${n(r * r)} * sin(angRaw - ${n(s.shapeTilt)}) * sin(angRaw - ${n(s.shapeTilt)}))`
     }
     case 'polygon': {
       const sides = Math.max(3, Math.round(s.polygonSides))
       const step = 360 / sides
-      return `1 / cos(((ang - ${n(s.shapeTilt)}) % ${n(step)} + ${n(step)}) % ${n(step)} - ${n(
+      return `1 / cos(((angRaw - ${n(s.shapeTilt)}) % ${n(step)} + ${n(step)}) % ${n(step)} - ${n(
         step / 2,
       )})`
     }
     case 'rose': {
       const k = Math.max(1, Math.round(s.rosePetals))
-      return `0.35 + 0.65 * absolute(cos(${n(k)} * (ang - ${n(s.shapeTilt)})))`
+      return `0.35 + 0.65 * absolute(cos(${n(k)} * (angRaw - ${n(s.shapeTilt)})))`
     }
     default:
       return null
@@ -141,6 +141,20 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
     w.line(`let by = ${ox('CY', t.originY)};`)
   }
 
+  // Mirroring flips the volley left/right about the vertical axis.
+  // flip = 1 keeps it as authored, flip = -1 reflects it: ang → 180 - ang,
+  // which is `(1 - flip) * 90 + flip * ang` in one expression.
+  const mirrorBoth = s.mirrorMode === 'both'
+  if (mirrorBoth) {
+    w.open('ascent(mi in 0..2) {')
+    w.line('let flip = 1;')
+    w.line('if (mi == 1) { flip = -1; }')
+  } else if (s.mirrorMode === 'alternate') {
+    w.line('let flip = 1;')
+    w.line('if (shotIndex % 2 == 1) { flip = -1; }')
+  }
+  const mirrored = s.mirrorMode !== 'none'
+
   const layered = s.layers > 1
   if (layered) w.open(`ascent(l in 0..${n(s.layers)}) {`)
   const baseSpeed = layered ? `${n(b.speed)} + ${n(s.layerSpeedStep)} * l` : n(b.speed)
@@ -148,17 +162,19 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
 
   w.open(`ascent(i in 0..${n(s.count)}) {`)
   w.line(
-    `let ang = ${angleExpr(s)}${
+    `let angRaw = ${angleExpr(s)}${
       s.angleRandom > 0 ? ` + rand(${n(-s.angleRandom)}, ${n(s.angleRandom)})` : ''
     };`,
   )
 
-  // speed is per-index: shaped volleys bend the ring by varying it with angle
+  // speed is per-index, and comes from the un-mirrored angle so that reflecting
+  // the direction reflects the whole shape
   const factor = speedFactorExpr(s)
   const parts = [factor ? `spdBase * (${factor})` : 'spdBase']
   if (s.patternType === 'whip') parts.push(`${n(s.speedStep)} * i`)
   if (b.speedRand > 0) parts.push(`rand(${n(-b.speedRand)}, ${n(b.speedRand)})`)
   w.line(`let spd = ${parts.join(' + ')};`)
+  w.line(mirrored ? 'let ang = (1 - flip) * 90 + flip * angRaw;' : 'let ang = angRaw;')
 
   if (s.patternType === 'line') {
     // spread the muzzle sideways rather than fanning the angles
@@ -182,6 +198,7 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
   if (s.controlTask) w.line(`${s.controlTask}(obj);`)
   w.close()
   if (layered) w.close()
+  if (mirrorBoth) w.close()
 }
 
 function writePatternTask(w: Writer, t: PatternTaskNode) {
@@ -291,6 +308,7 @@ function writeModifier(w: Writer, m: Modifier) {
       break
     case 'split': {
       const count = Math.max(2, Math.round(m.amount))
+      const childShot = m.text?.trim() || 'SHOT_SPLIT_ID'
       w.line('let sx = ObjMove_GetX(obj);')
       w.line('let sy = ObjMove_GetY(obj);')
       w.line('let sa = ObjMove_GetAngle(obj);')
@@ -299,7 +317,7 @@ function writeModifier(w: Writer, m: Modifier) {
       w.line(
         `CreateShotA1(sx, sy, ss, sa - ${n(m.amount2 / 2)} + (${n(m.amount2)} / ${n(
           count - 1,
-        )}) * k, SHOT_SPLIT_ID, 0);`,
+        )}) * k, ${childShot}, 0);`,
       )
       w.close()
       break

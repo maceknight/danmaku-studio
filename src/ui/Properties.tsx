@@ -496,6 +496,23 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
             onChange={(v) => set({ aimPlayer: v === 'on' })}
           />
         </Field>
+        <Field label="左右反転">
+          <Select
+            value={p.mirrorMode ?? 'none'}
+            options={[
+              { value: 'none', label: 'しない' },
+              { value: 'alternate', label: '1発ごとに交互' },
+              { value: 'both', label: '毎回 左右同時' },
+            ]}
+            onChange={(v) => set({ mirrorMode: v })}
+          />
+        </Field>
+        {(p.mirrorMode ?? 'none') !== 'none' && (
+          <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+            縦軸で左右に反転します。傾けた楕円やスパイラルを、クリップを増やさずに
+            ／＼と交互に出せます。
+          </p>
+        )}
         {p.type === 'laser' && (
           <>
             <Field label="レーザー種別">
@@ -750,8 +767,11 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                 </>
               )}
             </div>
-            {m.type === 'graphic' && (
-              <div className="mt-1.5">
+            {(m.type === 'graphic' || m.type === 'split') && (
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[10px] text-[var(--muted)]">
+                  {m.type === 'graphic' ? '変更後の弾' : '子弾の弾（未指定なら親と同じ）'}
+                </p>
                 {hasSheet ? (
                   <ShotPicker
                     value={m.text || p.bullet.shotDataId}
@@ -763,7 +783,7 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                   <input
                     type="text"
                     value={m.text ?? ''}
-                    placeholder="変更後の ShotDataID"
+                    placeholder="ShotDataID"
                     onChange={(e) =>
                       s().updateModifier(emitterId, patternId, m.id, { text: e.target.value })
                     }

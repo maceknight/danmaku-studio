@@ -43,6 +43,7 @@ function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
     rosePetals: Math.max(1, Math.round(p.rosePetals)),
     lineSpacing: p.lineSpacing,
     speedStep: p.speedStep,
+    mirrorMode: p.mirrorMode ?? 'none',
     bullet: {
       shotDataId: p.bullet.shotDataId,
       speed: p.bullet.speed,

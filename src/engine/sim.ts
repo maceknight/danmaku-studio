@@ -335,10 +335,15 @@ export class Simulator {
             if (pat) {
               const n = Math.max(2, Math.round(mod.amount))
               const spread = mod.amount2
+              // children may use a different graphic from the parent
+              const childShot = mod.text ? this.resolveShotId(mod.text) : 0
               for (let k = 0; k < n; k++) {
                 const a = b.angle - spread / 2 + (spread / Math.max(1, n - 1)) * k
                 const child = this.emit(pat, b.patternIdx, b.x, b.y, a, b.speed, 1)
-                if (child) child.delay = 0
+                if (child) {
+                  child.delay = 0
+                  if (childShot > 0) child.shotId = childShot
+                }
               }
             }
           }

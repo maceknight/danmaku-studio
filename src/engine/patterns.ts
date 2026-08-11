@@ -59,6 +59,13 @@ export function resolveShot(
   rng: Rng,
 ): SpawnSpec[] {
   const out: SpawnSpec[] = []
+  // 1 = as authored, -1 = mirrored left/right about the vertical axis
+  const flips =
+    p.mirrorMode === 'both'
+      ? [1, -1]
+      : p.mirrorMode === 'alternate'
+        ? [shotIndex % 2 === 0 ? 1 : -1]
+        : [1]
   const base =
     (p.aimPlayer ? aimAngle : p.angleBase + emitterRotation) +
     p.angleStep * p.spinDirection * shotIndex
@@ -69,6 +76,7 @@ export function resolveShot(
   const count = Math.max(1, Math.round(p.count))
   const layers = Math.max(1, Math.round(p.layers))
 
+  for (const flip of flips)
   for (let l = 0; l < layers; l++) {
     const layerSpeed = p.bullet.speed + p.layerSpeedStep * l
     for (let i = 0; i < count; i++) {
@@ -105,10 +113,13 @@ export function resolveShot(
       }
       if (p.angleRandom > 0) angle += rng.jitter(p.angleRandom)
 
+      // Speed comes from the un-mirrored angle: reflecting the direction while
+      // keeping the speed is exactly what mirrors the shape.
       let speed = layerSpeed * shapeSpeedFactor(p, angle)
       if (p.type === 'whip') speed += p.speedStep * i
       if (p.bullet.speedRand > 0) speed += rng.jitter(p.bullet.speedRand)
 
+      if (flip === -1) angle = 180 - angle
       const rad = angle * D2R
       let dx = Math.cos(rad) * p.radius
       let dy = Math.sin(rad) * p.radius
