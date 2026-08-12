@@ -7,6 +7,7 @@ import type {
   Pattern,
   PatternType,
   SoundDef,
+  SplitChild,
 } from './dmk'
 import { suggestShotDataId } from './shapes'
 
@@ -111,12 +112,42 @@ export function defaultBullet(): BulletDef {
     speedRand: 0,
     accel: 0,
     maxSpeed: 6,
+    rampTarget: 3,
+    rampDuration: 0,
+    rampDelay: 0,
+    rampEase: 'easeInOut',
     angularVelocity: 0,
     life: 300,
     scale: 1,
     blend: 'alpha',
     delay: 8,
     hitboxRadius: 4,
+  }
+}
+
+export function defaultSplitChild(): SplitChild {
+  return {
+    count: 5,
+    angleSpread: 90,
+    angleOffset: 0,
+    inheritSpeed: true,
+    speed: 2,
+    speedRand: 0,
+    radius: 0,
+    scale: 1,
+    life: 300,
+    shotDataId: '',
+  }
+}
+
+/** Old projects stored the split as two loose numbers. */
+export function splitChildOf(m: Modifier): SplitChild {
+  if (m.child) return m.child
+  return {
+    ...defaultSplitChild(),
+    count: Math.max(2, Math.round(m.amount || 5)),
+    angleSpread: m.amount2 || 60,
+    shotDataId: m.text ?? '',
   }
 }
 
@@ -136,9 +167,9 @@ export function defaultModifier(type: ModifierType): Modifier {
     case 'gravity':
       return { ...base, duration: 120, amount: 0.05 }
     case 'accel':
-      return { ...base, duration: 60, amount: 0.05 }
+      return { ...base, duration: 60, targetSpeed: 5, ease: 'easeInOut' }
     case 'split':
-      return { ...base, at: 60, amount: 5, amount2: 60 }
+      return { ...base, at: 60, amount: 5, amount2: 60, child: defaultSplitChild() }
     case 'fade':
       return { ...base, at: 120, duration: 30, amount: 0 }
     case 'scale':

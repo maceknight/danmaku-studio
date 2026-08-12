@@ -1,4 +1,11 @@
-import { sampleChannel, type Modifier, type Pattern, type Project } from '../types/dmk'
+import {
+  applyEase,
+  sampleChannel,
+  type Modifier,
+  type Pattern,
+  type Project,
+} from '../types/dmk'
+import { splitChildOf } from '../types/factory'
 import { firesOn, isActiveAt, localFrameOf, resolveShot, shotIndexAt } from './patterns'
 import { BulletPool } from './pool'
 import { Rng } from './rng'
@@ -208,6 +215,8 @@ export class Simulator {
     b.gvy = 0
     b.age = 0
     b.travel = 0
+    b.rampFrom = speed
+    b.rampAt = -1
     b.telegraph = b.kind === 1 ? Math.max(0, Math.round(p.laserDelay)) : 0
     // `life` is measured from materialisation, so the telegraph is added on top
     b.life = bd.life + b.telegraph
@@ -259,7 +268,19 @@ export class Simulator {
       b.px = b.x
       b.py = b.y
       b.angle += b.angularVelocity
-      if (b.accel !== 0) {
+
+      // Pattern-level speed ramp wins over raw acceleration when it is armed.
+      const bd = pat?.bullet
+      if (bd && bd.rampDuration > 0) {
+        const t = (b.age - bd.rampDelay) / bd.rampDuration
+        if (t >= 0) {
+          if (b.rampAt < 0) {
+            b.rampAt = b.age
+            b.rampFrom = b.speed
+          }
+          b.speed = b.rampFrom + (bd.rampTarget - b.rampFrom) * applyEase(t, bd.rampEase)
+        }
+      } else if (b.accel !== 0) {
         b.speed += b.accel
         if (b.accel > 0 && b.speed > b.maxSpeed) b.speed = b.maxSpeed
         if (b.accel < 0 && b.speed < -b.maxSpeed) b.speed = -b.maxSpeed
@@ -301,10 +322,19 @@ export class Simulator {
         case 'rotate':
           b.angle += mod.amount
           break
-        case 'accel':
-          b.speed += mod.amount
-          if (Math.abs(b.speed) > b.maxSpeed) b.speed = Math.sign(b.speed) * b.maxSpeed
+        case 'accel': {
+          // ease from whatever the bullet is doing now to the target speed
+          const target = mod.targetSpeed ?? mod.amount
+          const span = Math.max(1, mod.duration)
+          if (!(b.fired & bit)) {
+            b.fired |= bit
+            b.rampFrom = b.speed
+            b.rampAt = age
+          }
+          const t = (age - mod.at + 1) / span
+          b.speed = b.rampFrom + (target - b.rampFrom) * applyEase(t, mod.ease ?? 'linear')
           break
+        }
         case 'gravity':
           b.gvx += mod.amount2
           b.gvy += mod.amount
@@ -333,15 +363,32 @@ export class Simulator {
             b.fired |= bit
             const pat = this.compiled.patterns[b.patternIdx]?.pattern
             if (pat) {
-              const n = Math.max(2, Math.round(mod.amount))
-              const spread = mod.amount2
-              // children may use a different graphic from the parent
-              const childShot = mod.text ? this.resolveShotId(mod.text) : 0
+              const cfg = splitChildOf(mod)
+              const n = Math.max(1, Math.round(cfg.count))
+              const childShot = cfg.shotDataId ? this.resolveShotId(cfg.shotDataId) : 0
+              const centre = b.angle + cfg.angleOffset
               for (let k = 0; k < n; k++) {
-                const a = b.angle - spread / 2 + (spread / Math.max(1, n - 1)) * k
-                const child = this.emit(pat, b.patternIdx, b.x, b.y, a, b.speed, 1)
+                const a =
+                  n > 1
+                    ? centre - cfg.angleSpread / 2 + (cfg.angleSpread / (n - 1)) * k
+                    : centre
+                let sp = cfg.inheritSpeed ? b.speed : cfg.speed
+                if (cfg.speedRand > 0) sp += this.rng.jitter(cfg.speedRand)
+                const rad = a * D2R
+                const child = this.emit(
+                  pat,
+                  b.patternIdx,
+                  b.x + Math.cos(rad) * cfg.radius,
+                  b.y + Math.sin(rad) * cfg.radius,
+                  a,
+                  sp,
+                  1,
+                )
                 if (child) {
                   child.delay = 0
+                  child.scale = cfg.scale
+                  child.baseScale = cfg.scale
+                  child.life = cfg.life
                   if (childShot > 0) child.shotId = childShot
                 }
               }

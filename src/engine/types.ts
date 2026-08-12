@@ -36,6 +36,10 @@ export interface SimBullet {
   telegraph: number
   /** distance travelled since spawn — drives loose-laser length */
   travel: number
+  /** speed a ramp started from; captured on the frame the ramp begins */
+  rampFrom: number
+  /** age at which the active ramp started, or -1 when none is running */
+  rampAt: number
   /** index into SimState.patterns for modifier lookup */
   patternIdx: number
   /** split generation — children never re-split */
@@ -90,6 +94,8 @@ export function makeBullet(): SimBullet {
     laserWidth: 0,
     telegraph: 0,
     travel: 0,
+    rampFrom: 0,
+    rampAt: -1,
     patternIdx: -1,
     depth: 0,
     fired: 0,

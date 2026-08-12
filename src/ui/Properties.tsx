@@ -6,12 +6,20 @@ import {
   findPattern,
   findSound,
   type BlendMode,
+  type Easing,
   type EmitterDef,
+  type Modifier,
   type ModifierType,
   type Pattern,
   type PatternType,
+  type SplitChild,
 } from '../types/dmk'
-import { BULLET_PRESETS, PATTERN_LABELS, PATTERN_LIBRARY } from '../types/factory'
+import {
+  BULLET_PRESETS,
+  PATTERN_LABELS,
+  PATTERN_LIBRARY,
+  splitChildOf,
+} from '../types/factory'
 import { colorOf } from '../io/shotData'
 import { SHAPE_ORDER, SHAPES, suggestShotDataId } from '../types/shapes'
 import { ShapeGlyph } from './icons'
@@ -51,7 +59,7 @@ const MODIFIER_LABELS: Record<ModifierType, string> = {
 const AMOUNT_LABELS: Record<ModifierType, [string, string | null]> = {
   rotate: ['度/F', null],
   gravity: ['重力Y', '重力X'],
-  accel: ['加速度', null],
+  accel: ['目標速度', null],
   split: ['分裂数', '拡がり°'],
   fade: ['目標α', null],
   scale: ['目標倍率', null],
@@ -64,6 +72,16 @@ const AMOUNT_LABELS: Record<ModifierType, [string, string | null]> = {
 
 /** Modifiers whose only meaningful input is the frame it fires on. */
 const TIME_ONLY: ModifierType[] = ['graphic', 'reaim', 'destroy']
+
+/** Modifiers that interpolate, and so take an easing curve. */
+const EASED: ModifierType[] = ['accel', 'fade', 'scale']
+
+const EASE_OPTIONS: { value: Easing; label: string }[] = [
+  { value: 'linear', label: 'リニア（一定）' },
+  { value: 'easeIn', label: 'イーズイン（後半で急）' },
+  { value: 'easeOut', label: 'イーズアウト（最初が急）' },
+  { value: 'easeInOut', label: 'イーズインアウト' },
+]
 
 const BLENDS: { value: BlendMode; label: string }[] = [
   { value: 'alpha', label: '通常' },
@@ -623,12 +641,55 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
         <Field label="速度">
           <NumField value={p.bullet.speed} step={0.1} onChange={(v) => setBullet({ speed: v })} />
         </Field>
-        <Field label="加速度">
-          <NumField value={p.bullet.accel} step={0.01} onChange={(v) => setBullet({ accel: v })} />
+        <Field label="加減速">
+          <Select
+            value={p.bullet.rampDuration > 0 ? 'on' : 'off'}
+            options={[
+              { value: 'off', label: 'しない（等速）' },
+              { value: 'on', label: 'する' },
+            ]}
+            onChange={(v) => setBullet({ rampDuration: v === 'on' ? 60 : 0 })}
+          />
         </Field>
-        <Field label="最高速度">
-          <NumField value={p.bullet.maxSpeed} step={0.1} onChange={(v) => setBullet({ maxSpeed: v })} />
-        </Field>
+        {p.bullet.rampDuration > 0 && (
+          <>
+            <Field label="目標速度">
+              <NumField
+                value={p.bullet.rampTarget}
+                step={0.1}
+                onChange={(v) => setBullet({ rampTarget: v })}
+              />
+            </Field>
+            <Field label="変化時間">
+              <NumField
+                value={p.bullet.rampDuration}
+                min={1}
+                suffix="F"
+                onChange={(v) => setBullet({ rampDuration: Math.round(v) })}
+              />
+            </Field>
+            <Field label="開始">
+              <NumField
+                value={p.bullet.rampDelay}
+                min={0}
+                suffix="F"
+                onChange={(v) => setBullet({ rampDelay: Math.round(v) })}
+              />
+            </Field>
+            <Field label="カーブ">
+              <Select
+                value={p.bullet.rampEase ?? 'linear'}
+                options={EASE_OPTIONS}
+                onChange={(v) => setBullet({ rampEase: v })}
+              />
+            </Field>
+            <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+              速度 {p.bullet.speed} から {p.bullet.rampTarget} へ、
+              {p.bullet.rampDelay > 0 ? `${p.bullet.rampDelay}F 後から ` : ''}
+              {p.bullet.rampDuration}F かけて変化します。
+            </p>
+          </>
+        )}
         <Field label="寿命">
           <NumField
             value={p.bullet.life}
@@ -748,13 +809,26 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                       s().updateModifier(emitterId, patternId, m.id, { duration: Math.round(v) })
                     }
                   />
-                  <MiniNum
-                    label={AMOUNT_LABELS[m.type][0]}
-                    value={m.amount}
-                    step={0.05}
-                    onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { amount: v })}
-                  />
-                  {AMOUNT_LABELS[m.type][1] && (
+                  {m.type === 'accel' ? (
+                    <MiniNum
+                      label="目標速度"
+                      value={m.targetSpeed ?? m.amount}
+                      step={0.1}
+                      onChange={(v) =>
+                        s().updateModifier(emitterId, patternId, m.id, { targetSpeed: v })
+                      }
+                    />
+                  ) : (
+                    m.type !== 'split' && (
+                      <MiniNum
+                        label={AMOUNT_LABELS[m.type][0]}
+                        value={m.amount}
+                        step={0.05}
+                        onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { amount: v })}
+                      />
+                    )
+                  )}
+                  {m.type !== 'split' && AMOUNT_LABELS[m.type][1] && (
                     <MiniNum
                       label={AMOUNT_LABELS[m.type][1]!}
                       value={m.amount2}
@@ -767,11 +841,28 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                 </>
               )}
             </div>
-            {(m.type === 'graphic' || m.type === 'split') && (
+            {EASED.includes(m.type) && (
+              <label className="mt-1.5 flex items-center gap-1">
+                <span className="w-14 shrink-0 text-[10.5px] text-[var(--muted)]">カーブ</span>
+                <Select
+                  value={m.ease ?? 'linear'}
+                  options={EASE_OPTIONS}
+                  onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { ease: v })}
+                />
+              </label>
+            )}
+            {m.type === 'split' && (
+              <SplitChildEditor
+                emitterId={emitterId}
+                patternId={patternId}
+                modifier={m}
+                hasSheet={hasSheet}
+                fallbackShot={p.bullet.shotDataId}
+              />
+            )}
+            {m.type === 'graphic' && (
               <div className="mt-1.5 space-y-1">
-                <p className="text-[10px] text-[var(--muted)]">
-                  {m.type === 'graphic' ? '変更後の弾' : '子弾の弾（未指定なら親と同じ）'}
-                </p>
+                <p className="text-[10px] text-[var(--muted)]">変更後の弾</p>
                 {hasSheet ? (
                   <ShotPicker
                     value={m.text || p.bullet.shotDataId}
@@ -843,6 +934,87 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
         </Btn>
       </div>
     </>
+  )
+}
+
+/**
+ * A split is a small pattern fired from the parent bullet, so it gets a nested
+ * block with the same vocabulary rather than two unlabelled numbers.
+ */
+function SplitChildEditor({
+  emitterId,
+  patternId,
+  modifier,
+  hasSheet,
+  fallbackShot,
+}: {
+  emitterId: string
+  patternId: string
+  modifier: Modifier
+  hasSheet: boolean
+  fallbackShot: string
+}) {
+  const s = useStore.getState
+  const c = splitChildOf(modifier)
+  const set = (patch: Partial<SplitChild>) =>
+    s().updateModifier(emitterId, patternId, modifier.id, { child: { ...c, ...patch } })
+
+  return (
+    <div className="mt-1.5 space-y-1 rounded-md border border-[var(--border)] bg-[var(--card-2)] p-1.5">
+      <p className="text-[10px] font-semibold text-[var(--accent-ink)]">子弾の設定</p>
+      <div className="grid grid-cols-2 gap-1">
+        <MiniNum label="弾数" value={c.count} onChange={(v) => set({ count: Math.round(v) })} />
+        <MiniNum
+          label="拡がり°"
+          value={c.angleSpread}
+          onChange={(v) => set({ angleSpread: v })}
+        />
+        <MiniNum
+          label="角度ずれ°"
+          value={c.angleOffset}
+          onChange={(v) => set({ angleOffset: v })}
+        />
+        <MiniNum label="半径" value={c.radius} onChange={(v) => set({ radius: v })} />
+        <MiniNum label="サイズ" value={c.scale} step={0.1} onChange={(v) => set({ scale: v })} />
+        <MiniNum label="寿命F" value={c.life} onChange={(v) => set({ life: Math.round(v) })} />
+      </div>
+      <label className="flex items-center gap-1">
+        <span className="w-14 shrink-0 text-[10.5px] text-[var(--muted)]">速度</span>
+        <Select
+          value={c.inheritSpeed ? 'inherit' : 'fixed'}
+          options={[
+            { value: 'inherit', label: '親を引き継ぐ' },
+            { value: 'fixed', label: '指定する' },
+          ]}
+          onChange={(v) => set({ inheritSpeed: v === 'inherit' })}
+        />
+      </label>
+      {!c.inheritSpeed && (
+        <div className="grid grid-cols-2 gap-1">
+          <MiniNum label="速度" value={c.speed} step={0.1} onChange={(v) => set({ speed: v })} />
+          <MiniNum
+            label="速度±"
+            value={c.speedRand}
+            step={0.05}
+            onChange={(v) => set({ speedRand: v })}
+          />
+        </div>
+      )}
+      <p className="text-[10px] text-[var(--muted)]">子弾の弾（未指定なら親と同じ）</p>
+      {hasSheet ? (
+        <ShotPicker
+          value={c.shotDataId || fallbackShot}
+          onChange={(shotDataId) => set({ shotDataId })}
+        />
+      ) : (
+        <input
+          type="text"
+          value={c.shotDataId}
+          placeholder="ShotDataID"
+          onChange={(e) => set({ shotDataId: e.target.value })}
+        />
+      )}
+    </div>
   )
 }
 

@@ -62,6 +62,20 @@ export interface BulletDef {
   speedRand: number
   accel: number
   maxSpeed: number
+
+  /**
+   * Speed ramp: ease from the launch speed to `rampTarget` over `rampDuration`
+   * frames, starting `rampDelay` frames after launch.
+   *
+   * This is the accel/decel people actually want to author — "reach 5 by frame
+   * 60, slowing as it gets there" — rather than a raw per-frame delta. Set
+   * `rampDuration` to 0 to fall back to plain `accel`.
+   */
+  rampTarget: number
+  rampDuration: number
+  rampDelay: number
+  rampEase: Easing
+
   angularVelocity: number
   life: number
   scale: number
@@ -104,6 +118,36 @@ export interface Modifier {
    * children. Empty means "keep whatever the pattern already uses".
    */
   text?: string
+  /** interpolation curve for the duration-based kinds (accel / fade / scale) */
+  ease?: Easing
+  /** `accel` only: speed to arrive at by the end of `duration` */
+  targetSpeed?: number
+  /** `split` only: how the children are fired */
+  child?: SplitChild
+}
+
+/**
+ * Nested spawn settings for a split.
+ *
+ * A split is really "fire a small pattern from wherever this bullet is", so it
+ * gets the same vocabulary as a pattern rather than two nameless numbers.
+ */
+export interface SplitChild {
+  count: number
+  /** total fan width in degrees, centred on the parent's heading */
+  angleSpread: number
+  /** rotate the whole fan away from the parent's heading */
+  angleOffset: number
+  /** true = children keep the parent's speed and ignore `speed` */
+  inheritSpeed: boolean
+  speed: number
+  speedRand: number
+  /** spawn distance from the parent's position */
+  radius: number
+  scale: number
+  life: number
+  /** empty = keep the parent's graphic */
+  shotDataId: string
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +341,11 @@ export function findSound(p: Project, id: string): SoundDef | undefined {
 // ---------------------------------------------------------------------------
 // Keyframe evaluation
 // ---------------------------------------------------------------------------
+
+/** Shared easing evaluator: keyframes, speed ramps and modifiers all use it. */
+export function applyEase(t: number, kind: Easing): number {
+  return ease(Math.max(0, Math.min(1, t)), kind)
+}
 
 function ease(t: number, kind: Easing): number {
   switch (kind) {

@@ -50,6 +50,10 @@ function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
       speedRand: p.bullet.speedRand,
       accel: p.bullet.accel,
       maxSpeed: p.bullet.maxSpeed,
+      rampTarget: p.bullet.rampTarget,
+      rampDuration: Math.max(0, Math.round(p.bullet.rampDuration)),
+      rampDelay: Math.max(0, Math.round(p.bullet.rampDelay)),
+      rampEase: p.bullet.rampEase ?? 'linear',
       angularVelocity: p.bullet.angularVelocity,
       life: p.bullet.life,
       scale: p.bullet.scale,
@@ -100,7 +104,22 @@ export function lower(project: Project): TimelineAst {
       if (!p.enabled) continue
       shotDataIds.add(p.bullet.shotDataId)
 
-      const active: Modifier[] = p.modifiers.filter((m) => m.enabled)
+      // The pattern's own speed ramp is just an `accel` modifier that the user
+      // did not have to add by hand, so it rides the same control task.
+      const active: Modifier[] = [...p.modifiers.filter((m) => m.enabled)]
+      if (p.bullet.rampDuration > 0) {
+        active.unshift({
+          id: `${p.id}_ramp`,
+          type: 'accel',
+          enabled: true,
+          at: Math.max(0, Math.round(p.bullet.rampDelay)),
+          duration: Math.max(1, Math.round(p.bullet.rampDuration)),
+          amount: p.bullet.rampTarget,
+          amount2: 0,
+          targetSpeed: p.bullet.rampTarget,
+          ease: p.bullet.rampEase ?? 'linear',
+        })
+      }
       let controlTask: string | null = null
       if (active.length > 0) {
         controlTask = uniqueName(`TCtrl${ident(p.name, 'Pattern')}`)

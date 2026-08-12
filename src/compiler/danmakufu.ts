@@ -1,4 +1,5 @@
-import type { Modifier } from '../types/dmk'
+import type { Easing, Modifier } from '../types/dmk'
+import { splitChildOf } from '../types/factory'
 import type { ControlTaskNode, PatternTaskNode, SpawnNode, TimelineAst } from './ast'
 
 /** AST → 東方弾幕風 ph3 script text. The only module that knows ph3 syntax. */
@@ -249,6 +250,30 @@ function writeControlTask(w: Writer, c: ControlTaskNode) {
   w.close()
 }
 
+/**
+ * Emit `let e = <eased t>;`. ph3 has no ternary, so easeInOut is written as an
+ * assignment plus an `if`.
+ */
+function writeEase(w: Writer, kind: Easing) {
+  switch (kind) {
+    case 'easeIn':
+      w.line('let e = t * t;')
+      break
+    case 'easeOut':
+      w.line('let e = 1 - (1 - t) * (1 - t);')
+      break
+    case 'easeInOut':
+      w.line('let e = 2 * t * t;')
+      w.line('if (t >= 0.5) { e = 1 - (2 - 2 * t) * (2 - 2 * t) / 2; }')
+      break
+    case 'hold':
+      w.line('let e = 0;')
+      break
+    default:
+      w.line('let e = t;')
+  }
+}
+
 function writeModifier(w: Writer, m: Modifier) {
   const dur = Math.max(1, Math.round(m.duration))
   switch (m.type) {
@@ -259,13 +284,29 @@ function writeModifier(w: Writer, m: Modifier) {
         w.line('ObjMove_SetAngularVelocity(obj, 0);')
       }
       break
-    case 'accel':
-      w.line(`ObjMove_SetAcceleration(obj, ${n(m.amount)});`)
-      if (m.duration > 0) {
+    case 'accel': {
+      const target = m.targetSpeed ?? m.amount
+      const kind = m.ease ?? 'linear'
+      if (kind === 'linear') {
+        // a straight ramp is exactly what ph3's own acceleration does
+        w.line('let s0 = ObjMove_GetSpeed(obj);')
+        w.line(`ObjMove_SetMaxSpeed(obj, absolute(${n(target)}));`)
+        w.line(`ObjMove_SetAcceleration(obj, (${n(target)} - s0) / ${dur});`)
         w.line(`wait(${dur});`)
         w.line('ObjMove_SetAcceleration(obj, 0);')
+        w.line(`ObjMove_SetSpeed(obj, ${n(target)});`)
+      } else {
+        // eased ramps have to be stepped by hand
+        w.line('let s0 = ObjMove_GetSpeed(obj);')
+        w.open(`ascent(k in 1..${dur + 1}) {`)
+        w.line(`let t = k / ${dur};`)
+        writeEase(w, kind)
+        w.line(`ObjMove_SetSpeed(obj, s0 + (${n(target)} - s0) * e);`)
+        w.line('yield;')
+        w.close()
       }
       break
+    }
     case 'gravity':
       // ph3 has no gravity primitive — integrate it by hand.
       w.line('let gvx = 0;')
@@ -307,18 +348,34 @@ function writeModifier(w: Writer, m: Modifier) {
         )
       break
     case 'split': {
-      const count = Math.max(2, Math.round(m.amount))
-      const childShot = m.text?.trim() || 'SHOT_SPLIT_ID'
+      const c = splitChildOf(m)
+      const count = Math.max(1, Math.round(c.count))
+      const childShot = c.shotDataId.trim() || 'SHOT_SPLIT_ID'
       w.line('let sx = ObjMove_GetX(obj);')
       w.line('let sy = ObjMove_GetY(obj);')
-      w.line('let sa = ObjMove_GetAngle(obj);')
-      w.line('let ss = ObjMove_GetSpeed(obj);')
+      w.line(`let sa = ObjMove_GetAngle(obj) + ${n(c.angleOffset)};`)
+      w.line(
+        c.inheritSpeed ? 'let ss = ObjMove_GetSpeed(obj);' : `let ss = ${n(c.speed)};`,
+      )
       w.open(`ascent(k in 0..${count}) {`)
       w.line(
-        `CreateShotA1(sx, sy, ss, sa - ${n(m.amount2 / 2)} + (${n(m.amount2)} / ${n(
-          count - 1,
-        )}) * k, ${childShot}, 0);`,
+        count > 1
+          ? `let ca = sa - ${n(c.angleSpread / 2)} + (${n(c.angleSpread)} / ${n(count - 1)}) * k;`
+          : 'let ca = sa;',
       )
+      w.line(
+        `let cs = ss${c.speedRand > 0 ? ` + rand(${n(-c.speedRand)}, ${n(c.speedRand)})` : ''};`,
+      )
+      if (c.radius !== 0) {
+        w.line(`let cx = sx + cos(ca) * ${n(c.radius)};`)
+        w.line(`let cy = sy + sin(ca) * ${n(c.radius)};`)
+      } else {
+        w.line('let cx = sx;')
+        w.line('let cy = sy;')
+      }
+      w.line(`let ch = CreateShotA1(cx, cy, cs, ca, ${childShot}, 0);`)
+      if (c.scale !== 1) w.line(`ObjRender_SetScaleXYZ(ch, ${n(c.scale)}, ${n(c.scale)}, 1);`)
+      if (c.life > 0) w.line(`TLife(ch, ${n(c.life)});`)
       w.close()
       break
     }

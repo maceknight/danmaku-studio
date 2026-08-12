@@ -6,7 +6,14 @@
  * replace the generator.
  */
 
-import type { BlendMode, LaserType, MirrorMode, Modifier, PatternType } from '../types/dmk'
+import type {
+  BlendMode,
+  Easing,
+  LaserType,
+  MirrorMode,
+  Modifier,
+  PatternType,
+} from '../types/dmk'
 
 export interface BulletNode {
   shotDataId: string
@@ -14,6 +21,10 @@ export interface BulletNode {
   speedRand: number
   accel: number
   maxSpeed: number
+  rampTarget: number
+  rampDuration: number
+  rampDelay: number
+  rampEase: Easing
   angularVelocity: number
   life: number
   scale: number
