@@ -72,7 +72,7 @@ interface StoreState {
   mobileTab: MobileTab
   /** parsed ph3 shot sheet, when one is loaded (session-only, never in .dmk) */
   shotSheet: ShotSheet | null
-  shotSheetImage: HTMLImageElement | null
+  shotSheetImage: HTMLCanvasElement | null
   shotSheetName: string
   shotSheetError: string | null
   /** families × colours derived from the sheet — what the picker shows */
@@ -111,7 +111,7 @@ interface StoreState {
   setMobileTab: (t: MobileTab) => void
   setShotSheet: (
     sheet: ShotSheet | null,
-    image: HTMLImageElement | null,
+    image: HTMLCanvasElement | null,
     name: string,
     labels?: Map<string, string>,
     error?: string | null,

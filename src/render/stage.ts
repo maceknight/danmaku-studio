@@ -50,16 +50,14 @@ interface Palette {
   label: number
 }
 
-const LIGHT: Palette = {
-  bg: 0xfbfaff,
-  grid: 0xece9f8,
-  gridMajor: 0xdcd6f2,
-  frame: 0xbcb2e6,
-  player: 0x7c5cff,
-  label: 0x6b6a85,
-}
-
-const DARK: Palette = {
+/**
+ * The stage is always dark, in both UI themes.
+ *
+ * Danmaku art is authored for a dark playfield: additive shots add light, so on
+ * a near-white background they wash out completely. Keeping the stage dark is
+ * the only way the preview can tell the truth about what ph3 will draw.
+ */
+const STAGE: Palette = {
   bg: 0x0f0e16,
   grid: 0x222030,
   gridMajor: 0x2f2b45,
@@ -100,7 +98,7 @@ export class StageRenderer {
   private lastW = 0
   private lastH = 0
   private ready = false
-  private palette: Palette = LIGHT
+  private palette: Palette = STAGE
   private gridKey = ''
 
   /** user view transform (pan / zoom tools) */
@@ -111,7 +109,7 @@ export class StageRenderer {
 
   async init(host: HTMLDivElement) {
     await this.app.init({
-      background: LIGHT.bg,
+      background: STAGE.bg,
       antialias: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
@@ -203,7 +201,7 @@ export class StageRenderer {
    * resolves to an id in this sheet is drawn with the real sprite instead of a
    * procedural silhouette — what you see is what ph3 will draw.
    */
-  setShotSheet(sheet: ShotSheet | null, image: HTMLImageElement | null) {
+  setShotSheet(sheet: ShotSheet | null, image: HTMLCanvasElement | null) {
     for (const b of this.sheetBuckets.values()) b.container.destroy({ children: true })
     this.sheetBuckets.clear()
     // Don't destroy the old base texture: Texture.from() hands back a cached
@@ -233,8 +231,15 @@ export class StageRenderer {
 
     const container = new Container()
     this.sheetLayer.addChild(container)
+    // Inset by half a texel. The sheet is tightly packed, so a frame sampled
+    // with linear filtering reaches into the neighbouring cell and drags a
+    // sliver of the wrong sprite along the edge.
+    const inset = 0.5
     const bucket: SheetBucket = {
-      texture: new Texture({ source: base.source, frame: new Rectangle(left, top, w, h) }),
+      texture: new Texture({
+        source: base.source,
+        frame: new Rectangle(left + inset, top + inset, w - inset * 2, h - inset * 2),
+      }),
       container,
       sprites: [],
       used: 0,
@@ -272,12 +277,16 @@ export class StageRenderer {
     return b
   }
 
-  setTheme(dark: boolean) {
-    const next = dark ? DARK : LIGHT
-    if (next === this.palette) return
-    this.palette = next
+  /**
+   * The UI theme does not reach the stage — see STAGE above. Kept as a method
+   * so callers don't have to know that, and so a future "light stage" option
+   * has somewhere to live.
+   */
+  setTheme(_dark: boolean) {
+    if (this.palette === STAGE) return
+    this.palette = STAGE
     if (this.ready) {
-      this.app.renderer.background.color = next.bg
+      this.app.renderer.background.color = STAGE.bg
       this.gridKey = ''
     }
   }

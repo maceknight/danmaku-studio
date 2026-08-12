@@ -305,7 +305,13 @@ export async function loadShotSheet(
   definitionUrl: string,
   constantsUrl?: string,
   imageUrl?: string,
-): Promise<{ sheet: ShotSheet; image: HTMLImageElement; labels: Map<string, string> }> {
+): Promise<{
+  sheet: ShotSheet
+  /** sanitised copy of the sheet — see sanitizeSheetImage */
+  image: HTMLCanvasElement
+  labels: Map<string, string>
+  report: SanitizeReport
+}> {
   const defText = await fetch(definitionUrl).then((r) => {
     if (!r.ok) throw new Error(`定義ファイルを読めません: ${definitionUrl}`)
     return r.text()
@@ -333,7 +339,101 @@ export async function loadShotSheet(
     el.onerror = () => reject(new Error(`画像を読めません: ${resolved}`))
     el.src = resolved
   })
-  return { sheet, image, labels }
+  const { canvas, report } = sanitizeSheetImage(image, sheet)
+  return { sheet, image: canvas, labels, report }
+}
+
+export interface SanitizeReport {
+  clearedPixels: number
+  affected: { id: number; name?: string; edge: 'top' | 'bottom'; rows: number }[]
+}
+
+/**
+ * Strips glow that has leaked in from a neighbouring cell.
+ *
+ * The sheet is packed edge to edge, and some sprites' soft halos spill past
+ * their cell into the one next door. Inside the wrong rect that reads as a
+ * smudge along the bullet's edge — very visible on a dark stage.
+ *
+ * The test is physical rather than a guess: a sprite's own halo fades *away*
+ * from its body, so any band that keeps getting brighter as it approaches the
+ * cell boundary — and brighter still on the far side — belongs to the
+ * neighbour. Only faint bands qualify, so real sprite edges are never touched.
+ *
+ * Non-destructive: the source PNG is untouched; this only fixes what the editor
+ * draws. ph3 reads the same rects, so it will still show the leak until the
+ * artwork itself is cleaned.
+ */
+export function sanitizeSheetImage(
+  image: HTMLImageElement,
+  sheet: ShotSheet,
+): { canvas: HTMLCanvasElement; report: SanitizeReport } {
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(image, 0, 0)
+
+  const W = canvas.width
+  const H = canvas.height
+  const img = ctx.getImageData(0, 0, W, H)
+  const d = img.data
+  const report: SanitizeReport = { clearedPixels: 0, affected: [] }
+  /** brighter than this is treated as real artwork, never stripped */
+  const FAINT = 96
+
+  const rowMax = (y: number, l: number, r: number) => {
+    if (y < 0 || y >= H) return 0
+    let m = 0
+    for (let x = Math.max(0, l); x < Math.min(W, r); x++) {
+      const a = d[(y * W + x) * 4 + 3]
+      if (a > m) m = a
+    }
+    return m
+  }
+  const clearRow = (y: number, l: number, r: number) => {
+    let n = 0
+    for (let x = Math.max(0, l); x < Math.min(W, r); x++) {
+      const o = (y * W + x) * 4
+      if (d[o + 3] > 0) n++
+      d[o] = 0
+      d[o + 1] = 0
+      d[o + 2] = 0
+      d[o + 3] = 0
+    }
+    return n
+  }
+
+  for (const shot of sheet.shots.values()) {
+    const r = shotRect(shot)
+    if (!r) continue
+    const l = Math.min(r.left, r.right)
+    const t = Math.min(r.top, r.bottom)
+    const rt = Math.max(r.left, r.right)
+    const bt = Math.max(r.top, r.bottom)
+
+    for (const edge of ['bottom', 'top'] as const) {
+      const dir = edge === 'bottom' ? -1 : 1
+      let y = edge === 'bottom' ? bt - 1 : t
+      let ref = rowMax(edge === 'bottom' ? bt : t - 1, l, rt)
+      if (ref === 0) continue
+      let rows = 0
+      while (y >= t && y <= bt - 1) {
+        const cur = rowMax(y, l, rt)
+        // stop at the first row that is bright, empty, or no longer fading
+        // towards the boundary — that row is the sprite's own artwork
+        if (cur === 0 || cur >= FAINT || cur >= ref) break
+        report.clearedPixels += clearRow(y, l, rt)
+        rows++
+        ref = cur
+        y += dir
+      }
+      if (rows > 0) report.affected.push({ id: shot.id, name: shot.name, edge, rows })
+    }
+  }
+
+  ctx.putImageData(img, 0, 0)
+  return { canvas, report }
 }
 
 /** The drawable rect for a shot: static rect, or the first animation frame. */
