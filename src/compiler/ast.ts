@@ -13,6 +13,7 @@ import type {
   MirrorMode,
   Modifier,
   PatternType,
+  WallBehavior,
 } from '../types/dmk'
 
 export interface BulletNode {
@@ -59,8 +60,12 @@ export interface SpawnNode {
   laserLength: number
   laserWidth: number
   laserDelay: number
+  wallBehavior: WallBehavior
+  wallBounces: number
   /** name of the generated per-bullet control task, or null when not needed */
   controlTask: string | null
+  /** name of the generated per-bullet wall-watcher task, or null when not needed */
+  wallTask: string | null
 }
 
 /** One pattern clip → one ph3 task. */
@@ -100,6 +105,16 @@ export interface ControlTaskNode {
   modifiers: Modifier[]
 }
 
+/** One per pattern with `wallBehavior !== 'none'` — a per-bullet edge watcher. */
+export interface WallTaskNode {
+  taskName: string
+  behavior: WallBehavior
+  /** 0 = unlimited */
+  bounces: number
+  /** modifiers with `trigger === 'wall'`, sorted by `at` (hit count) */
+  modifiers: Modifier[]
+}
+
 export interface SoundNode {
   name: string
   fileName: string
@@ -121,6 +136,7 @@ export interface TimelineAst {
   patternTasks: PatternTaskNode[]
   moveTasks: MoveTaskNode[]
   controlTasks: ControlTaskNode[]
+  wallTasks: WallTaskNode[]
   sounds: SoundNode[]
   shotDataIds: string[]
 }

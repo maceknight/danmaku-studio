@@ -66,6 +66,14 @@ export class Simulator {
    * the engine having to know anything about sprite sheets or the DOM.
    */
   resolveShotId: (shotDataId: string) => number = () => 0
+  /**
+   * Where the player currently is. Play mode swaps this for the live,
+   * keyboard-driven position; the default just mirrors the project setting.
+   */
+  playerPosition: () => { x: number; y: number } = () => ({
+    x: this.compiled.project.settings.playerX,
+    y: this.compiled.project.settings.playerY,
+  })
 
   constructor(project: Project, capacity = 12000) {
     this.compiled = compile(project)
@@ -150,7 +158,7 @@ export class Simulator {
   // -------------------------------------------------------------------------
 
   private spawn(frame: number) {
-    const { settings, emitters } = this.compiled.project
+    const { emitters } = this.compiled.project
     this.emitterMarkers.length = 0
     const state = new Map<string, { x: number; y: number; rotation: number }>()
 
@@ -179,7 +187,8 @@ export class Simulator {
       if (!st) continue
       const local = localFrameOf(p, frame)
       if (!firesOn(p, local)) continue
-      const aim = Math.atan2(settings.playerY - st.y, settings.playerX - st.x) * R2D
+      const player = this.playerPosition()
+      const aim = Math.atan2(player.y - st.y, player.x - st.x) * R2D
       for (const s of resolveShot(p, shotIndexAt(p, local), st.rotation, aim, this.rng)) {
         this.emit(p, idx, st.x + s.dx, st.y + s.dy, s.angle, s.speed, 0)
       }
@@ -234,6 +243,7 @@ export class Simulator {
     b.patternIdx = patternIdx
     b.depth = depth
     b.fired = 0
+    b.wallHits = 0
     return b
   }
 
@@ -291,6 +301,51 @@ export class Simulator {
       b.travel += Math.abs(b.speed)
       b.age += 1
 
+      // Wall contact — right after the position update, before the out-of-bounds
+      // cull, and using the stage rect itself (not OUT_MARGIN, which is a
+      // separate "how far off-screen before we bother culling" allowance).
+      // Anchored lasers (kind 1) never move, so the check is meaningless for them.
+      const behavior = bd?.wallBehavior ?? 'none'
+      if (behavior !== 'none' && b.kind !== 1) {
+        const hw = settings.stageWidth / 2
+        const hh = settings.stageHeight / 2
+        let hit = false
+        // left/right and top/bottom are checked separately — a corner hit can
+        // trip both in the same frame.
+        if (b.x < -hw || b.x > hw) {
+          hit = true
+          if (behavior === 'bounce') {
+            b.x = b.x < -hw ? -hw : hw
+            b.angle = 180 - b.angle
+          } else if (behavior === 'wrap') {
+            b.x = b.x < -hw ? hw : -hw
+          }
+        }
+        if (b.y < -hh || b.y > hh) {
+          hit = true
+          if (behavior === 'bounce') {
+            b.y = b.y < -hh ? -hh : hh
+            b.angle = -b.angle
+          } else if (behavior === 'wrap') {
+            b.y = b.y < -hh ? hh : -hh
+          }
+        }
+        if (hit) {
+          b.wallHits += 1
+          if (behavior === 'vanish') {
+            this.pool.release(i)
+            continue
+          }
+          // "wallBounces" reads as "how many times it's allowed to bounce", so
+          // it survives that many hits and only dies on the one after.
+          const limit = pat?.bullet.wallBounces ?? 0
+          if (limit > 0 && b.wallHits > limit) {
+            this.pool.release(i)
+            continue
+          }
+        }
+      }
+
       // a loose laser stays visible until its tail has also left the stage
       const margin = b.kind === 2 ? b.laserLength : 0
 
@@ -311,11 +366,20 @@ export class Simulator {
     for (let m = 0; m < mods.length && m < 30; m++) {
       const mod = mods[m]
       if (!mod.enabled) continue
+      const bit = 1 << m
+
+      if ((mod.trigger ?? 'age') === 'wall') {
+        // fires once, the frame after the `at`-th wall contact
+        if (b.wallHits < Math.max(1, mod.at) || b.fired & bit) continue
+        b.fired |= bit
+        if (!this.applyModifierOnce(b, index, mod)) return
+        continue
+      }
+
       const age = b.age
       const within =
         age >= mod.at && (mod.duration <= 0 ? age === mod.at : age < mod.at + mod.duration)
       if (!within) continue
-      const bit = 1 << m
       const once = mod.duration <= 0
 
       switch (mod.type) {
@@ -361,38 +425,7 @@ export class Simulator {
           // children — so a child can never split again.
           if (!(b.fired & bit)) {
             b.fired |= bit
-            const pat = this.compiled.patterns[b.patternIdx]?.pattern
-            if (pat) {
-              const cfg = splitChildOf(mod)
-              const n = Math.max(1, Math.round(cfg.count))
-              const childShot = cfg.shotDataId ? this.resolveShotId(cfg.shotDataId) : 0
-              const centre = b.angle + cfg.angleOffset
-              for (let k = 0; k < n; k++) {
-                const a =
-                  n > 1
-                    ? centre - cfg.angleSpread / 2 + (cfg.angleSpread / (n - 1)) * k
-                    : centre
-                let sp = cfg.inheritSpeed ? b.speed : cfg.speed
-                if (cfg.speedRand > 0) sp += this.rng.jitter(cfg.speedRand)
-                const rad = a * D2R
-                const child = this.emit(
-                  pat,
-                  b.patternIdx,
-                  b.x + Math.cos(rad) * cfg.radius,
-                  b.y + Math.sin(rad) * cfg.radius,
-                  a,
-                  sp,
-                  1,
-                )
-                if (child) {
-                  child.delay = 0
-                  child.scale = cfg.scale
-                  child.baseScale = cfg.scale
-                  child.life = cfg.life
-                  if (childShot > 0) child.shotId = childShot
-                }
-              }
-            }
+            this.applySplit(b, mod)
           }
           break
         case 'graphic':
@@ -405,8 +438,8 @@ export class Simulator {
         case 'reaim':
           if (!(b.fired & bit)) {
             b.fired |= bit
-            const { playerX, playerY } = this.compiled.project.settings
-            b.angle = Math.atan2(playerY - b.y, playerX - b.x) * R2D
+            const player = this.playerPosition()
+            b.angle = Math.atan2(player.y - b.y, player.x - b.x) * R2D
           }
           break
         case 'destroy':
@@ -416,6 +449,90 @@ export class Simulator {
           break
       }
       if (once) b.fired |= bit
+    }
+  }
+
+  /**
+   * Wall contact is a point in time, not a span, so duration-based kinds
+   * (accel / fade / scale / gravity / rotate) apply their end state in one
+   * shot here instead of interpolating — there is no later frame to ease
+   * towards once the modifier has already fired.
+   */
+  private applyModifierOnce(b: SimBullet, index: number, mod: Modifier): boolean {
+    switch (mod.type) {
+      case 'rotate':
+        b.angle += mod.amount
+        break
+      case 'accel':
+        b.rampFrom = b.speed
+        b.rampAt = -1
+        b.speed = mod.targetSpeed ?? mod.amount
+        break
+      case 'gravity':
+        b.gvx += mod.amount2
+        b.gvy += mod.amount
+        break
+      case 'fade':
+        b.alpha = mod.amount
+        break
+      case 'scale':
+        b.scale = mod.amount * b.baseScale
+        break
+      case 'random':
+        b.angle += this.rng.jitter(mod.amount2)
+        b.speed += this.rng.jitter(mod.amount)
+        break
+      case 'split':
+        this.applySplit(b, mod)
+        break
+      case 'graphic': {
+        const next = this.resolveShotId(mod.text ?? '')
+        if (next > 0) b.shotId = next
+        break
+      }
+      case 'reaim': {
+        const player = this.playerPosition()
+        b.angle = Math.atan2(player.y - b.y, player.x - b.x) * R2D
+        break
+      }
+      case 'destroy':
+        this.pool.release(index)
+        return false
+      case 'wait':
+        break
+    }
+    return true
+  }
+
+  /** Fire a small nested pattern from wherever `b` currently is. */
+  private applySplit(b: SimBullet, mod: Modifier) {
+    const pat = this.compiled.patterns[b.patternIdx]?.pattern
+    if (!pat) return
+    const cfg = splitChildOf(mod)
+    const n = Math.max(1, Math.round(cfg.count))
+    const childShot = cfg.shotDataId ? this.resolveShotId(cfg.shotDataId) : 0
+    const centre = b.angle + cfg.angleOffset
+    for (let k = 0; k < n; k++) {
+      const a = n > 1 ? centre - cfg.angleSpread / 2 + (cfg.angleSpread / (n - 1)) * k : centre
+      let sp = cfg.inheritSpeed ? b.speed : cfg.speed
+      if (cfg.speedRand > 0) sp += this.rng.jitter(cfg.speedRand)
+      const rad = a * D2R
+      const child = this.emit(
+        pat,
+        b.patternIdx,
+        b.x + Math.cos(rad) * cfg.radius,
+        b.y + Math.sin(rad) * cfg.radius,
+        a,
+        sp,
+        1,
+      )
+      if (child) {
+        child.delay = 0
+        child.scale = cfg.scale
+        child.baseScale = cfg.scale
+        child.life = cfg.life
+        if (childShot > 0) child.shotId = childShot
+      }
     }
   }
 

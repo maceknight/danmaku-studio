@@ -46,6 +46,8 @@ export interface SimBullet {
   depth: number
   /** bitmask of one-shot modifiers already applied (max 30 modifiers) */
   fired: number
+  /** how many times this bullet has touched the stage edge */
+  wallHits: number
 }
 
 export interface EmitterMarker {
@@ -99,5 +101,6 @@ export function makeBullet(): SimBullet {
     patternIdx: -1,
     depth: 0,
     fired: 0,
+    wallHits: 0,
   }
 }

@@ -57,12 +57,15 @@ export async function recordGifFrames(
     let i = 0
     for (let f = opts.startFrame; f <= opts.endFrame; f += Math.max(1, opts.frameStep)) {
       const view = sim.seek(f)
-      r.render(view, settings, {
+      r.render(view, {
         showGrid: store.showGrid,
         showHitbox: false, // hitboxes are an editing aid, not something to share
         showTrails: store.showTrails,
         selectedEmitterId: null,
         dark: store.theme === 'dark',
+        // GIF export always uses the authored position — play mode's live
+        // 自機 isn't something you'd want baked into a shared clip
+        playerPos: { x: settings.playerX, y: settings.playerY },
       })
       r.drawStageInto(ctx, width, height, settings)
       frames.push(ctx.getImageData(0, 0, width, height).data)
@@ -84,6 +87,24 @@ export async function recordGifFrames(
 /** Last rendered emitter positions — hit-testing must use these, not the
  *  static x/y, because keyframed emitters move. */
 let lastMarkers: { id: string; x: number; y: number }[] = []
+
+/** Play-mode movement keys, held-state tracked outside React so the rAF loop
+ *  can poll it every tick without a re-render per keystroke. */
+const MOVE_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'ShiftLeft',
+  'ShiftRight',
+])
+const pressedKeys = new Set<string>()
+const PLAYER_SPEED = 4.5
+const PLAYER_SPEED_SLOW = 1.8
 
 const TOOLS: { id: PreviewTool; title: string; icon: () => React.ReactNode }[] = [
   { id: 'pan', title: '手のひら（ドラッグで移動）', icon: Icon.hand },
@@ -111,7 +132,35 @@ export function Preview() {
   const emitterCount = useStore((s) => s.emitterCount)
   const fps = useStore((s) => s.fps)
   const cursor = useStore((s) => s.cursor)
+  const playMode = useStore((s) => s.playMode)
   const st = useStore.getState
+
+  // Play-mode input. Registered unconditionally (cheap) and only consumed by
+  // the rAF loop when playMode is on — mirrors App.tsx's own "ignore typing
+  // targets" guard so a text field doesn't turn into a movement key trap.
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null) => {
+      const tag = (t as HTMLElement | null)?.tagName
+      return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA'
+    }
+    const onDown = (e: KeyboardEvent) => {
+      if (!MOVE_KEYS.has(e.code) || isTypingTarget(e.target)) return
+      e.preventDefault()
+      pressedKeys.add(e.code)
+    }
+    const onUp = (e: KeyboardEvent) => {
+      pressedKeys.delete(e.code)
+    }
+    const onBlur = () => pressedKeys.clear()
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -128,13 +177,49 @@ export function Preview() {
       activeRenderer = renderer
       const sim = new Simulator(st().project)
       activeSim = sim
+      // Aim-type patterns and `reaim` read this every time they fire — play
+      // mode swaps in the live, keyboard-driven position instead of the
+      // static project setting.
+      sim.playerPosition = () => {
+        const cur = st()
+        return cur.playMode
+          ? cur.livePlayer
+          : { x: cur.project.settings.playerX, y: cur.project.settings.playerY }
+      }
 
       let lastRevision = -1
       let lastSheet: unknown = undefined
+      let lastPlayerSprite: HTMLImageElement | null = null
+      let lastPlayMode = st().playMode
       let lastTime = performance.now()
       let accumulator = 0
       let fpsAccum = 0
       let fpsFrames = 0
+
+      // Advances 自機 by `steps` simulated frames' worth of movement, so play
+      // speed stays tied to the sim clock instead of raw wall-clock time.
+      const movePlayer = (steps: number) => {
+        const cur = st()
+        let dx = 0
+        let dy = 0
+        if (pressedKeys.has('ArrowLeft') || pressedKeys.has('KeyA')) dx -= 1
+        if (pressedKeys.has('ArrowRight') || pressedKeys.has('KeyD')) dx += 1
+        if (pressedKeys.has('ArrowUp') || pressedKeys.has('KeyW')) dy -= 1
+        if (pressedKeys.has('ArrowDown') || pressedKeys.has('KeyS')) dy += 1
+        if (dx === 0 && dy === 0) return
+        if (dx !== 0 && dy !== 0) {
+          dx /= Math.SQRT2
+          dy /= Math.SQRT2
+        }
+        const slow = pressedKeys.has('ShiftLeft') || pressedKeys.has('ShiftRight')
+        const speed = (slow ? PLAYER_SPEED_SLOW : PLAYER_SPEED) * steps
+        const { stageWidth, stageHeight } = cur.project.settings
+        const hw = stageWidth / 2
+        const hh = stageHeight / 2
+        const nx = Math.max(-hw, Math.min(hw, cur.livePlayer.x + dx * speed))
+        const ny = Math.max(-hh, Math.min(hh, cur.livePlayer.y + dy * speed))
+        cur.setLivePlayer(nx, ny)
+      }
 
       const loop = (now: number) => {
         raf = requestAnimationFrame(loop)
@@ -150,9 +235,19 @@ export function Preview() {
           sim.resolveShotId = (id) => resolveShotId(st().shotSheet, id)
           lastRevision = -1 // force a resim so bullets pick up their sprite
         }
+        if (s.playerSprite !== lastPlayerSprite) {
+          lastPlayerSprite = s.playerSprite
+          renderer.setPlayerSprite(s.playerSprite)
+        }
         if (s.revision !== lastRevision) {
           lastRevision = s.revision
           sim.setProject(s.project)
+        }
+        if (s.playMode !== lastPlayMode) {
+          lastPlayMode = s.playMode
+          // determinism only holds within one playMode session — snapshots
+          // taken under one player-position source aren't valid under another
+          sim.invalidate()
         }
 
         renderer.setTheme(s.theme === 'dark')
@@ -165,34 +260,43 @@ export function Preview() {
             accumulator -= whole
             let next = s.frame + whole
             const end = s.project.settings.duration
+            // play mode is forward-only — looping back to 0 would be a
+            // backward jump, so it just stops at the end instead
+            const loopPlayback = s.loopPlayback && !s.playMode
             if (next > end) {
-              if (s.loopPlayback) next = 0
+              if (loopPlayback) next = 0
               else {
                 next = end
                 s.setPlaying(false)
               }
             }
             if (next < 0) {
-              if (s.loopPlayback) next = end
+              if (loopPlayback) next = end
               else {
                 next = 0
                 s.setPlaying(false)
               }
             }
             s.setFrame(next)
+            if (s.playMode && whole > 0) movePlayer(whole)
           }
         } else {
           accumulator = 0
         }
 
-        const view = sim.seek(st().frame)
+        const cur = st()
+        const playerPos = cur.playMode
+          ? cur.livePlayer
+          : { x: cur.project.settings.playerX, y: cur.project.settings.playerY }
+        const view = sim.seek(cur.frame)
         lastMarkers = view.emitters.map((e) => ({ id: e.id, x: e.x, y: e.y }))
-        renderer.render(view, s.project.settings, {
+        renderer.render(view, {
           showGrid: s.showGrid,
           showHitbox: s.showHitbox,
           showTrails: s.showTrails,
           selectedEmitterId: selectedEmitter(s),
           dark: s.theme === 'dark',
+          playerPos,
         })
 
         fpsAccum += dt
@@ -347,6 +451,12 @@ export function Preview() {
       <div className="pointer-events-none absolute right-3 bottom-3 rounded-lg border border-[var(--border)] bg-[var(--card)]/90 px-2.5 py-1.5 font-mono text-[10.5px] text-[var(--text-2)] shadow-[var(--shadow)] backdrop-blur">
         X: {cursor.x.toFixed(2)}　Y: {cursor.y.toFixed(2)}
       </div>
+
+      {playMode && (
+        <div className="pointer-events-none absolute top-3 right-3 rounded-lg border border-[var(--accent)] bg-[var(--card)]/90 px-2.5 py-1.5 text-[10.5px] text-[var(--text-2)] shadow-[var(--shadow)] backdrop-blur">
+          矢印キー / WASD で移動・Shift でゆっくり
+        </div>
+      )}
     </Card>
   )
 }

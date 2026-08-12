@@ -1,6 +1,6 @@
 import type { Easing, Modifier } from '../types/dmk'
 import { splitChildOf } from '../types/factory'
-import type { ControlTaskNode, PatternTaskNode, SpawnNode, TimelineAst } from './ast'
+import type { ControlTaskNode, PatternTaskNode, SpawnNode, TimelineAst, WallTaskNode } from './ast'
 
 /** AST → 東方弾幕風 ph3 script text. The only module that knows ph3 syntax. */
 
@@ -197,6 +197,7 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
   if (b.blend === 'multiply') w.line('ObjRender_SetBlendType(obj, BLEND_MULTIPLY);')
   if (b.life > 0 && s.patternType !== 'laser') w.line(`TLife(obj, ${n(b.life)});`)
   if (s.controlTask) w.line(`${s.controlTask}(obj);`)
+  if (s.wallTask) w.line(`${s.wallTask}(obj);`)
   w.close()
   if (layered) w.close()
   if (mirrorBoth) w.close()
@@ -397,6 +398,155 @@ function writeModifier(w: Writer, m: Modifier) {
   }
 }
 
+/**
+ * Wall-triggered modifiers fire inside a loop that runs every frame (see
+ * writeWallTask), so nothing here may `wait` or `yield` — that would stall the
+ * wall watch itself. Duration-based kinds (accel / fade / scale / gravity /
+ * rotate) apply their end state immediately instead of the eased ramp
+ * `writeModifier` emits; everything else is already instantaneous and can
+ * reuse that code as-is.
+ */
+function writeModifierInstant(w: Writer, m: Modifier) {
+  switch (m.type) {
+    case 'rotate':
+      w.line(`ObjMove_SetAngle(obj, ObjMove_GetAngle(obj) + ${n(m.amount)});`)
+      break
+    case 'accel':
+      w.line(`ObjMove_SetSpeed(obj, ${n(m.targetSpeed ?? m.amount)});`)
+      break
+    case 'gravity':
+      // ph3 has no gravity primitive — nudge position by the one-shot impulse.
+      w.line(`ObjMove_SetX(obj, ObjMove_GetX(obj) + ${n(m.amount2)});`)
+      w.line(`ObjMove_SetY(obj, ObjMove_GetY(obj) + ${n(m.amount)});`)
+      break
+    case 'fade':
+      w.line(`ObjRender_SetAlpha(obj, ${n(m.amount * 255)});`)
+      if (m.amount <= 0) {
+        w.line('Obj_Delete(obj);')
+        w.line('return;')
+      }
+      break
+    case 'scale':
+      w.line(`ObjRender_SetScaleXYZ(obj, ${n(m.amount)}, ${n(m.amount)}, 1);`)
+      break
+    case 'wait':
+      // meaningless as a wall event — no-op, matching the engine
+      break
+    default:
+      // split / random / graphic / reaim / destroy are already single-shot
+      writeModifier(w, m)
+  }
+}
+
+/**
+ * Per-bullet edge watcher. Runs alongside the control task and polls the
+ * bullet's own position every frame — ph3 has no collision-with-a-rectangle
+ * event, so this is the only way to know the instant a bullet crosses the
+ * stage edge.
+ */
+function writeWallTask(w: Writer, t: WallTaskNode) {
+  w.blank()
+  w.open(`task ${t.taskName}(obj) {`)
+
+  if (t.behavior === 'vanish') {
+    // "vanish exactly at the edge" doesn't need hit counting or modifiers —
+    // the bullet is gone the instant it reaches the rect.
+    w.open('loop {')
+    w.line('if (Obj_IsDeleted(obj)) { return; }')
+    w.line('let x = ObjMove_GetX(obj);')
+    w.line('let y = ObjMove_GetY(obj);')
+    w.open('if (x < WALL_L || x > WALL_R || y < WALL_T || y > WALL_B) {')
+    w.line('Obj_Delete(obj);')
+    w.line('return;')
+    w.close()
+    w.line('yield;')
+    w.close()
+    w.close()
+    return
+  }
+
+  w.line('let hits = 0;')
+  w.open('loop {')
+  w.line('if (Obj_IsDeleted(obj)) { return; }')
+  w.line('let x = ObjMove_GetX(obj);')
+  w.line('let y = ObjMove_GetY(obj);')
+  w.line('let a = ObjMove_GetAngle(obj);')
+  w.line('let hit = false;')
+  if (t.behavior === 'bounce') {
+    w.open('if (x < WALL_L) {')
+    w.line('ObjMove_SetX(obj, WALL_L);')
+    w.line('a = 180 - a;')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (x > WALL_R) {')
+    w.line('ObjMove_SetX(obj, WALL_R);')
+    w.line('a = 180 - a;')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (y < WALL_T) {')
+    w.line('ObjMove_SetY(obj, WALL_T);')
+    w.line('a = -a;')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (y > WALL_B) {')
+    w.line('ObjMove_SetY(obj, WALL_B);')
+    w.line('a = -a;')
+    w.line('hit = true;')
+    w.close()
+    w.line('if (hit) { ObjMove_SetAngle(obj, a); }')
+  } else {
+    // wrap — jump to the opposite edge, heading unchanged
+    w.open('if (x < WALL_L) {')
+    w.line('ObjMove_SetX(obj, WALL_R);')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (x > WALL_R) {')
+    w.line('ObjMove_SetX(obj, WALL_L);')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (y < WALL_T) {')
+    w.line('ObjMove_SetY(obj, WALL_B);')
+    w.line('hit = true;')
+    w.close()
+    w.open('if (y > WALL_B) {')
+    w.line('ObjMove_SetY(obj, WALL_T);')
+    w.line('hit = true;')
+    w.close()
+  }
+
+  w.open('if (hit) {')
+  w.line('hits++;')
+  if (t.modifiers.length > 0) {
+    // several modifiers can share the same hit count — group them so each
+    // `if (hits == N)` only appears once
+    const byAt = new Map<number, Modifier[]>()
+    for (const m of t.modifiers) {
+      const at = Math.max(1, Math.round(m.at))
+      const list = byAt.get(at) ?? []
+      list.push(m)
+      byAt.set(at, list)
+    }
+    for (const at of [...byAt.keys()].sort((a, b) => a - b)) {
+      w.open(`if (hits == ${n(at)}) {`)
+      for (const m of byAt.get(at)!) writeModifierInstant(w, m)
+      w.close()
+    }
+  }
+  if (t.bounces > 0) {
+    // "bounces" reads as "how many times it may bounce" — it survives that
+    // many hits and only dies on the one after, matching the engine.
+    w.open(`if (hits > ${n(t.bounces)}) {`)
+    w.line('Obj_Delete(obj);')
+    w.line('return;')
+    w.close()
+  }
+  w.close()
+
+  w.line('yield;')
+  w.close()
+  w.close()
+}
+
 // ---------------------------------------------------------------------------
 
 export function generateDanmakufu(ast: TimelineAst): string {
@@ -412,6 +562,12 @@ export function generateDanmakufu(ast: TimelineAst): string {
   w.blank()
   w.line('let CX = GetCenterX();')
   w.line('let CY = GetCenterY();')
+  if (ast.wallTasks.length > 0) {
+    w.line(`let WALL_L = ${ox('CX', -ast.stageWidth / 2)};`)
+    w.line(`let WALL_R = ${ox('CX', ast.stageWidth / 2)};`)
+    w.line(`let WALL_T = ${ox('CY', -ast.stageHeight / 2)};`)
+    w.line(`let WALL_B = ${ox('CY', ast.stageHeight / 2)};`)
+  }
   w.line(`let SHOT_SPLIT_ID = ${splitId};`)
   w.line('let objBoss;')
   w.blank()
@@ -484,6 +640,7 @@ export function generateDanmakufu(ast: TimelineAst): string {
 
   for (const t of ast.patternTasks) writePatternTask(w, t)
   for (const c of ast.controlTasks) writeControlTask(w, c)
+  for (const t of ast.wallTasks) writeWallTask(w, t)
 
   if (ast.sounds.length > 0) {
     w.blank()

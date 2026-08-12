@@ -13,6 +13,7 @@ import {
   type Pattern,
   type PatternType,
   type SplitChild,
+  type WallBehavior,
 } from '../types/dmk'
 import {
   BULLET_PRESETS,
@@ -87,6 +88,18 @@ const BLENDS: { value: BlendMode; label: string }[] = [
   { value: 'alpha', label: '通常' },
   { value: 'add', label: '加算' },
   { value: 'multiply', label: '乗算' },
+]
+
+const WALL_BEHAVIORS: { value: WallBehavior; label: string }[] = [
+  { value: 'none', label: 'しない' },
+  { value: 'bounce', label: '跳ね返る' },
+  { value: 'wrap', label: '反対側へ出る' },
+  { value: 'vanish', label: '消える' },
+]
+
+const TRIGGER_OPTIONS: { value: 'age' | 'wall'; label: string }[] = [
+  { value: 'age', label: '経過フレーム' },
+  { value: 'wall', label: '壁に当たった時' },
 ]
 
 export function Properties() {
@@ -720,6 +733,29 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
             onChange={(v) => setBullet({ hitboxRadius: v })}
           />
         </Field>
+        <Field label="壁の挙動">
+          <Select
+            value={p.bullet.wallBehavior ?? 'none'}
+            options={WALL_BEHAVIORS}
+            onChange={(v) => setBullet({ wallBehavior: v })}
+          />
+        </Field>
+        {(p.bullet.wallBehavior === 'bounce' || p.bullet.wallBehavior === 'wrap') && (
+          <Field label="跳ね返り回数">
+            <NumField
+              value={p.bullet.wallBounces ?? 0}
+              min={0}
+              onChange={(v) => setBullet({ wallBounces: Math.round(v) })}
+            />
+          </Field>
+        )}
+        {(p.bullet.wallBehavior === 'bounce' || p.bullet.wallBehavior === 'wrap') && (
+          <p className="text-[10.5px] leading-relaxed text-[var(--muted)]">
+            {(p.bullet.wallBounces ?? 0) === 0
+              ? '0 は無制限に跳ね返り続けます。'
+              : `${p.bullet.wallBounces} 回跳ね返ったあと、次に当たると消えます。`}
+          </p>
+        )}
       </Group>
 
       <Group title="詳細設定">
@@ -792,9 +828,17 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
                 ×
               </button>
             </div>
+            <label className="mt-1.5 flex items-center gap-1">
+              <span className="w-14 shrink-0 text-[10.5px] text-[var(--muted)]">トリガー</span>
+              <Select
+                value={m.trigger ?? 'age'}
+                options={TRIGGER_OPTIONS}
+                onChange={(v) => s().updateModifier(emitterId, patternId, m.id, { trigger: v })}
+              />
+            </label>
             <div className="mt-1.5 grid grid-cols-2 gap-1">
               <MiniNum
-                label="開始F"
+                label={(m.trigger ?? 'age') === 'wall' ? '何回目' : '開始F'}
                 value={m.at}
                 onChange={(v) =>
                   s().updateModifier(emitterId, patternId, m.id, { at: Math.round(v) })
@@ -802,13 +846,15 @@ function PatternProps({ emitterId, patternId }: { emitterId: string; patternId: 
               />
               {!TIME_ONLY.includes(m.type) && (
                 <>
-                  <MiniNum
-                    label="継続F"
-                    value={m.duration}
-                    onChange={(v) =>
-                      s().updateModifier(emitterId, patternId, m.id, { duration: Math.round(v) })
-                    }
-                  />
+                  {(m.trigger ?? 'age') !== 'wall' && (
+                    <MiniNum
+                      label="継続F"
+                      value={m.duration}
+                      onChange={(v) =>
+                        s().updateModifier(emitterId, patternId, m.id, { duration: Math.round(v) })
+                      }
+                    />
+                  )}
                   {m.type === 'accel' ? (
                     <MiniNum
                       label="目標速度"

@@ -35,6 +35,9 @@ export interface KeyframeChannels {
 
 export type BlendMode = 'alpha' | 'add' | 'multiply'
 
+/** none = fly through · bounce = reflect · wrap = exit the opposite edge · vanish = despawn */
+export type WallBehavior = 'none' | 'bounce' | 'wrap' | 'vanish'
+
 /**
  * Bullet silhouettes modelled on 弾幕風 ph3's stock shot graphics.
  * Purely a preview concept — what ph3 actually draws is decided by
@@ -82,6 +85,11 @@ export interface BulletDef {
   blend: BlendMode
   delay: number
   hitboxRadius: number
+
+  /** what happens when the bullet reaches the stage edge */
+  wallBehavior: WallBehavior
+  /** bounce / wrap only. 0 = unlimited */
+  wallBounces: number
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +132,11 @@ export interface Modifier {
   targetSpeed?: number
   /** `split` only: how the children are fired */
   child?: SplitChild
+  /**
+   * Firing condition. 'age' (default) treats `at` as the bullet's own age in
+   * frames. 'wall' treats `at` as "which wall contact" (1 = the first).
+   */
+  trigger?: 'age' | 'wall'
 }
 
 /**

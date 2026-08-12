@@ -39,6 +39,8 @@ export interface RenderOptions {
   showTrails: boolean
   selectedEmitterId: string | null
   dark: boolean
+  /** where 自機 actually is — differs from settings.playerX/Y during play mode */
+  playerPos: { x: number; y: number }
 }
 
 interface Palette {
@@ -82,6 +84,9 @@ export class StageRenderer {
   /** white inner cores, drawn on top of every rim */
   private coreLayer = new Container()
   private hitboxLayer = new Graphics()
+  /** holds the single 自機 sprite — a Graphics layer can't parent a Sprite */
+  private playerLayer = new Container()
+  private playerSprite: Sprite | null = null
   private guideLayer = new Graphics()
   private markerLayer = new Container()
   private markers: { g: Graphics; label: Text }[] = []
@@ -140,6 +145,8 @@ export class StageRenderer {
       this.coreLayer,
       this.sheetLayer,
       this.hitboxLayer,
+      // sprite first, then the hitbox-style guide small on top of it
+      this.playerLayer,
       this.guideLayer,
       this.markerLayer,
     )
@@ -212,6 +219,27 @@ export class StageRenderer {
 
   get hasShotSheet() {
     return this.sheet !== null && this.sheetBase !== null
+  }
+
+  /**
+   * 自機 is a fixed sprite, not a pool — there's only ever one on stage — so
+   * it's built once here rather than per-frame like the bullet buckets.
+   * Only the top-left 64×64 cell of the 512×256 (8×4) sheet is used; no
+   * animation.
+   */
+  setPlayerSprite(image: HTMLCanvasElement | HTMLImageElement | null) {
+    if (this.playerSprite) {
+      this.playerSprite.destroy()
+      this.playerSprite = null
+    }
+    if (!image) return
+    const base = Texture.from(image)
+    const texture = new Texture({ source: base.source, frame: new Rectangle(0, 0, 64, 64) })
+    const sp = new Sprite(texture)
+    sp.anchor.set(0.5)
+    sp.scale.set(0.75)
+    this.playerLayer.addChild(sp)
+    this.playerSprite = sp
   }
 
   private sheetBucket(shotId: number): SheetBucket | null {
@@ -348,12 +376,12 @@ export class StageRenderer {
     g.stroke({ color: this.palette.frame, width: 1.5 })
   }
 
-  render(view: SimSnapshotView, settings: ProjectSettings, opts: RenderOptions) {
+  render(view: SimSnapshotView, opts: RenderOptions) {
     if (!this.ready) return
     this.gridLayer.visible = opts.showGrid
     this.renderBullets(view, opts)
     this.renderMarkers(view, opts.selectedEmitterId)
-    this.renderGuides(settings)
+    this.renderGuides(opts.playerPos)
   }
 
   /** Frames a straight laser takes to swell from telegraph to full width. */
@@ -581,17 +609,23 @@ export class StageRenderer {
     }
   }
 
-  private renderGuides(s: ProjectSettings) {
+  private renderGuides(playerPos: { x: number; y: number }) {
     const g = this.guideLayer
     const c = this.palette.player
     g.clear()
-    g.circle(s.playerX, s.playerY, 10).stroke({ color: c, width: 1.5 })
-    g.circle(s.playerX, s.playerY, 3).fill({ color: c })
-    g.moveTo(s.playerX - 16, s.playerY)
-      .lineTo(s.playerX + 16, s.playerY)
-      .moveTo(s.playerX, s.playerY - 16)
-      .lineTo(s.playerX, s.playerY + 16)
+    g.circle(playerPos.x, playerPos.y, 10).stroke({ color: c, width: 1.5 })
+    g.circle(playerPos.x, playerPos.y, 3).fill({ color: c })
+    g.moveTo(playerPos.x - 16, playerPos.y)
+      .lineTo(playerPos.x + 16, playerPos.y)
+      .moveTo(playerPos.x, playerPos.y - 16)
+      .lineTo(playerPos.x, playerPos.y + 16)
     g.stroke({ color: c, width: 1, alpha: 0.35 })
+
+    if (this.playerSprite) {
+      this.playerSprite.visible = true
+      this.playerSprite.x = playerPos.x
+      this.playerSprite.y = playerPos.y
+    }
   }
 
   /** Snapshot the current frame as a PNG data URL. */

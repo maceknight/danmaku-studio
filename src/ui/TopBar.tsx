@@ -18,6 +18,7 @@ const RATES: { value: string; label: string }[] = [
 function CompactBar() {
   const project = useStore((s) => s.project)
   const playing = useStore((s) => s.playing)
+  const playMode = useStore((s) => s.playMode)
   const theme = useStore((s) => s.theme)
   const past = useStore((s) => s.past.length)
   const s = useStore.getState
@@ -46,6 +47,13 @@ function CompactBar() {
       >
         {playing ? <Icon.pause /> : <Icon.play />}
       </IconBtn>
+      <IconBtn
+        title={playMode ? 'プレイモード終了' : 'プレイモード（自機を操作）'}
+        active={playMode}
+        onClick={() => s().setPlayMode(!playMode)}
+      >
+        <Icon.gamepad />
+      </IconBtn>
       <Btn onClick={() => s().setShowSamples(true)}>サンプル</Btn>
       <IconBtn title="テーマ切替" onClick={() => s().toggleTheme()}>
         {theme === 'light' ? <Icon.sun /> : <Icon.moon />}
@@ -66,6 +74,7 @@ export function TopBar() {
 function WideBar() {
   const project = useStore((s) => s.project)
   const playing = useStore((s) => s.playing)
+  const playMode = useStore((s) => s.playMode)
   const rate = useStore((s) => s.rate)
   const loopPlayback = useStore((s) => s.loopPlayback)
   const theme = useStore((s) => s.theme)
@@ -148,6 +157,16 @@ function WideBar() {
       <IconBtn title="1フレーム送り (→)" onClick={() => s().nudgeFrame(1)}>
         <Icon.step />
       </IconBtn>
+      <Btn
+        active={playMode}
+        title={playMode ? 'プレイモード終了' : '自機をキーボードで操作（移動のみ）'}
+        onClick={() => s().setPlayMode(!playMode)}
+      >
+        <span className="flex items-center gap-1.5">
+          <Icon.gamepad />
+          プレイ
+        </span>
+      </Btn>
 
       <div className="w-[86px]">
         <Select

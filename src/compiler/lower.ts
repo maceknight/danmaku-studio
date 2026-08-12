@@ -13,6 +13,7 @@ import type {
   SoundNode,
   SpawnNode,
   TimelineAst,
+  WallTaskNode,
 } from './ast'
 
 function ident(s: string, fallback: string): string {
@@ -21,7 +22,7 @@ function ident(s: string, fallback: string): string {
   return /^[0-9]/.test(safe) ? `_${safe}` : safe
 }
 
-function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
+function lowerSpawn(p: Pattern, controlTask: string | null, wallTask: string | null): SpawnNode {
   return {
     kind: 'spawn',
     patternType: p.type,
@@ -64,7 +65,10 @@ function lowerSpawn(p: Pattern, controlTask: string | null): SpawnNode {
     laserLength: p.laserLength,
     laserWidth: p.laserWidth,
     laserDelay: Math.max(0, Math.round(p.laserDelay)),
+    wallBehavior: p.bullet.wallBehavior ?? 'none',
+    wallBounces: Math.max(0, Math.round(p.bullet.wallBounces ?? 0)),
     controlTask,
+    wallTask,
   }
 }
 
@@ -73,6 +77,7 @@ export function lower(project: Project): TimelineAst {
   const patternTasks: PatternTaskNode[] = []
   const moveTasks: MoveTaskNode[] = []
   const controlTasks: ControlTaskNode[] = []
+  const wallTasks: WallTaskNode[] = []
   const sounds: SoundNode[] = []
   const shotDataIds = new Set<string>()
   const usedNames = new Set<string>()
@@ -105,10 +110,13 @@ export function lower(project: Project): TimelineAst {
       shotDataIds.add(p.bullet.shotDataId)
 
       // The pattern's own speed ramp is just an `accel` modifier that the user
-      // did not have to add by hand, so it rides the same control task.
-      const active: Modifier[] = [...p.modifiers.filter((m) => m.enabled)]
+      // did not have to add by hand, so it rides the same control task. It is
+      // always age-triggered — there is no UI to make the ramp itself wall-fired.
+      const ageMods: Modifier[] = p.modifiers.filter(
+        (m) => m.enabled && (m.trigger ?? 'age') !== 'wall',
+      )
       if (p.bullet.rampDuration > 0) {
-        active.unshift({
+        ageMods.unshift({
           id: `${p.id}_ramp`,
           type: 'accel',
           enabled: true,
@@ -121,9 +129,27 @@ export function lower(project: Project): TimelineAst {
         })
       }
       let controlTask: string | null = null
-      if (active.length > 0) {
+      if (ageMods.length > 0) {
         controlTask = uniqueName(`TCtrl${ident(p.name, 'Pattern')}`)
-        controlTasks.push({ taskName: controlTask, modifiers: active })
+        controlTasks.push({ taskName: controlTask, modifiers: ageMods })
+      }
+
+      // A straight (anchored) laser never moves, so wall contact can't happen —
+      // matches the engine, which skips kind-1 bullets the same way.
+      const anchoredLaser = p.type === 'laser' && p.laserType === 'straight'
+      const wallBehavior = p.bullet.wallBehavior ?? 'none'
+      let wallTask: string | null = null
+      if (wallBehavior !== 'none' && !anchoredLaser) {
+        wallTask = uniqueName(`TWall${ident(p.name, 'Pattern')}`)
+        const wallMods = p.modifiers
+          .filter((m) => m.enabled && (m.trigger ?? 'age') === 'wall')
+          .sort((a, b) => a.at - b.at)
+        wallTasks.push({
+          taskName: wallTask,
+          behavior: wallBehavior,
+          bounces: Math.max(0, Math.round(p.bullet.wallBounces ?? 0)),
+          modifiers: wallMods,
+        })
       }
 
       patternTasks.push({
@@ -141,7 +167,7 @@ export function lower(project: Project): TimelineAst {
         originY: emitter.y,
         rotation: emitter.rotation,
         followsBoss: animated,
-        spawn: lowerSpawn(p, controlTask),
+        spawn: lowerSpawn(p, controlTask, wallTask),
       })
     }
 
@@ -195,6 +221,7 @@ export function lower(project: Project): TimelineAst {
     patternTasks,
     moveTasks,
     controlTasks,
+    wallTasks,
     sounds,
     shotDataIds: [...shotDataIds],
   }

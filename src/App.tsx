@@ -98,6 +98,20 @@ export default function App() {
       cancelled = true
     }
   }, [])
+
+  // 自機 sprite for play mode — same load shape as the shot sheet above.
+  useEffect(() => {
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (!cancelled) useStore.getState().setPlayerSprite(img)
+    }
+    img.src = `${import.meta.env.BASE_URL}player/reimu.png`
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem(THEME_KEY, theme)
@@ -145,18 +159,21 @@ export default function App() {
           s.setPlaying(!s.playing)
           break
         case 'ArrowRight':
+          // in play mode these keys drive 自機 movement instead (see Preview.tsx)
+          if (s.playMode) break
           e.preventDefault()
           s.nudgeFrame(e.shiftKey ? 10 : 1)
           break
         case 'ArrowLeft':
+          if (s.playMode) break
           e.preventDefault()
           s.nudgeFrame(e.shiftKey ? -10 : -1)
           break
         case 'Home':
-          s.setFrame(0)
+          if (!s.playMode) s.setFrame(0)
           break
         case 'End':
-          s.setFrame(s.project.settings.duration)
+          if (!s.playMode) s.setFrame(s.project.settings.duration)
           break
         case 'Delete':
         case 'Backspace':

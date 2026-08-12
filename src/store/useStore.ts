@@ -50,6 +50,10 @@ interface StoreState {
   reverse: boolean
   rate: PlayRate
   loopPlayback: boolean
+  /** self-piloted play mode — forward-only, keyboard-driven 自機 */
+  playMode: boolean
+  /** live 自機 position while playMode is on; never written to the project */
+  livePlayer: { x: number; y: number }
 
   selection: Selection
   theme: 'light' | 'dark'
@@ -77,6 +81,8 @@ interface StoreState {
   shotSheetError: string | null
   /** families × colours derived from the sheet — what the picker shows */
   shotFamilies: ShotFamily[]
+  /** 自機 sprite sheet — the top-left 64×64 cell is drawn, no animation */
+  playerSprite: HTMLImageElement | null
 
   // --- infrastructure -------------------------------------------------------
   mutate: (fn: (p: Project) => void) => void
@@ -92,6 +98,8 @@ interface StoreState {
   setReverse: (v: boolean) => void
   setRate: (r: PlayRate) => void
   setLoopPlayback: (v: boolean) => void
+  setPlayMode: (v: boolean) => void
+  setLivePlayer: (x: number, y: number) => void
 
   // --- view -----------------------------------------------------------------
   select: (s: Selection) => void
@@ -116,6 +124,7 @@ interface StoreState {
     labels?: Map<string, string>,
     error?: string | null,
   ) => void
+  setPlayerSprite: (image: HTMLImageElement | null) => void
 
   // --- emitters -------------------------------------------------------------
   addEmitter: () => void
@@ -181,6 +190,8 @@ export const useStore = create<StoreState>((set, get) => ({
   reverse: false,
   rate: 1,
   loopPlayback: true,
+  playMode: false,
+  livePlayer: { x: 0, y: 0 },
 
   selection: null,
   theme: 'light',
@@ -205,6 +216,7 @@ export const useStore = create<StoreState>((set, get) => ({
   shotSheetName: '',
   shotSheetError: null,
   shotFamilies: [],
+  playerSprite: null,
 
   // -------------------------------------------------------------------------
   mutate: (fn) =>
@@ -242,12 +254,33 @@ export const useStore = create<StoreState>((set, get) => ({
   canRedo: () => get().future.length > 0,
 
   // -------------------------------------------------------------------------
-  setFrame: (f) => set((s) => ({ frame: clampFrame(s.project, f) })),
-  nudgeFrame: (d) => set((s) => ({ frame: clampFrame(s.project, s.frame + d) })),
+  // Play mode is forward-only by contract (see spec_wall_and_playmode.md §2-1):
+  // blocking backward jumps here catches every seek path — ruler drag, Home,
+  // nudgeFrame — in one place instead of disabling each caller separately.
+  setFrame: (f) =>
+    set((s) => {
+      const frame = clampFrame(s.project, f)
+      if (s.playMode && frame < s.frame) return {}
+      return { frame }
+    }),
+  nudgeFrame: (d) => get().setFrame(get().frame + d),
   setPlaying: (v) => set({ playing: v }),
   setReverse: (v) => set({ reverse: v }),
   setRate: (r) => set({ rate: r }),
   setLoopPlayback: (v) => set({ loopPlayback: v }),
+  setPlayMode: (v) =>
+    set((s) =>
+      v
+        ? {
+            playMode: true,
+            frame: 0,
+            playing: true,
+            reverse: false,
+            livePlayer: { x: s.project.settings.playerX, y: s.project.settings.playerY },
+          }
+        : { playMode: false, playing: false },
+    ),
+  setLivePlayer: (x, y) => set({ livePlayer: { x, y } }),
 
   select: (selection) => set({ selection }),
   setTheme: (theme) => set({ theme }),
@@ -275,6 +308,7 @@ export const useStore = create<StoreState>((set, get) => ({
       // bump so the preview rebuilds its textures and re-resolves shot ids
       revision: s.revision + 1,
     })),
+  setPlayerSprite: (playerSprite) => set({ playerSprite }),
 
   // -------------------------------------------------------------------------
   addEmitter: () => {

@@ -122,6 +122,8 @@ export function defaultBullet(): BulletDef {
     blend: 'alpha',
     delay: 8,
     hitboxRadius: 4,
+    wallBehavior: 'none',
+    wallBounces: 0,
   }
 }
 

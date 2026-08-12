@@ -23,6 +23,7 @@ export function Timeline() {
   const frame = useStore((s) => s.frame)
   const selection = useStore((s) => s.selection)
   const timeUnit = useStore((s) => s.timeUnit)
+  const playMode = useStore((s) => s.playMode)
   const s = useStore.getState
 
   const [pxPerFrame, setPxPerFrame] = useState(1.55)
@@ -76,9 +77,13 @@ export function Timeline() {
               style={{ width: HEAD_W }}
             />
             <div
-              className="drag-surface relative shrink-0 cursor-ew-resize border-b border-[var(--border)] bg-[var(--card)]"
+              className={`drag-surface relative shrink-0 border-b border-[var(--border)] bg-[var(--card)] ${
+                playMode ? 'cursor-not-allowed opacity-50' : 'cursor-ew-resize'
+              }`}
               style={{ width: laneW }}
+              title={playMode ? 'プレイモード中はシークできません' : undefined}
               onPointerDown={(e) => {
+                if (playMode) return
                 scrubbing.current = true
                 ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
                 s().setFrame(frameFromEvent(e.clientX))
