@@ -14,6 +14,7 @@ import {
   defaultModifier,
   defaultPattern,
   defaultSound,
+  defaultSplitChild,
   styleBullet,
   uid,
 } from '../types/factory'
@@ -554,6 +555,82 @@ function lesson10(): Project {
   return project('10_総合スペル', [boss, left, right], 14)
 }
 
+/** 11 — walls as a trigger: a bouncing bullet fires a laser burst on impact. */
+function lesson11(): Project {
+  const boss = emitter('Boss', 0, -150, [
+    pat('circle', {
+      name: '跳ね返る弾',
+      from: 0.5,
+      to: 9.5,
+      color: 'SKY',
+      shape: 'ball',
+      colorIndex: 3,
+      set: {
+        interval: 65,
+        count: 3,
+        bullet: { speed: 3.4, life: 900, wallBehavior: 'bounce', wallBounces: 0 },
+      },
+      mods: [
+        {
+          type: 'split',
+          patch: {
+            trigger: 'wall',
+            at: 1,
+            child: {
+              ...defaultSplitChild(),
+              type: 'laser',
+              laserType: 'straight',
+              count: 3,
+              angleSpread: 100,
+              laserLength: 260,
+              laserWidth: 14,
+              laserDelay: 18,
+              life: 45,
+              shotDataId: 'BGW_BALL_S_RED',
+            },
+          },
+        },
+      ],
+    }),
+    pat('circle', {
+      name: 'ゆっくり跳ね返る弾',
+      from: 2,
+      to: 9.5,
+      color: 'PURPLE',
+      shape: 'orb',
+      colorIndex: 6,
+      set: {
+        interval: 130,
+        count: 2,
+        bullet: { speed: 2, life: 900, wallBehavior: 'bounce', wallBounces: 0 },
+      },
+      mods: [
+        {
+          type: 'split',
+          patch: {
+            trigger: 'wall',
+            at: 1,
+            child: {
+              ...defaultSplitChild(),
+              type: 'laser',
+              laserType: 'loose',
+              count: 4,
+              angleSpread: 360,
+              laserLength: 90,
+              laserWidth: 8,
+              inheritSpeed: false,
+              speed: 4.5,
+              life: 160,
+              shotDataId: 'BGW_KUNAI_YELLOW',
+            },
+          },
+        },
+      ],
+    }),
+  ])
+  return project('11_壁でレーザーに変わる弾', [boss], 10)
+}
+
 // ---------------------------------------------------------------------------
 // リファレンス
 // ---------------------------------------------------------------------------
@@ -778,6 +855,15 @@ export const SAMPLES: Sample[] = [
     tip: '重ねる順番が大事。土台に細かいスパイラル、区切りに予告レーザー、間を埋めるまち針、という具合に「常時・周期・単発」を分けて考えると崩れにくい。タイムラインで各クリップの開始をずらして、切り替わりを作っている。',
     tags: ['総合', 'レーザー', 'キーフレーム'],
     build: lesson10,
+  },
+  {
+    id: 'l11',
+    lesson: 11,
+    name: '11_壁でレーザーに変わる弾',
+    description: '壁で跳ね返る弾が、当たった瞬間だけレーザーを噴き出す。分裂の子弾に laser を選んだ例。',
+    tip: '分裂モディファイアの「トリガー」を壁に当たった時・何回目=1にすると、最初の跳ね返りだけでレーザーが出る（2回目以降は再発火しない）。子弾の種類はパターンライブラリと同じ一覧から選べるので、扇形の分裂の代わりに固定式・射出式レーザーを割り当てられる。親弾自体は跳ね返り続けるので、画面が薄まらずに済む。',
+    tags: ['壁', '分裂', 'レーザー'],
+    build: lesson11,
   },
   {
     id: 'shape-catalogue',
