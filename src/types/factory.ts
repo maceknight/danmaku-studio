@@ -139,6 +139,13 @@ export function defaultSplitChild(): SplitChild {
     scale: 1,
     life: 300,
     shotDataId: '',
+    // 'nway' reproduces the old hard-coded fan exactly, so existing .dmk
+    // files that predate the pattern picker keep their old look.
+    type: 'nway',
+    laserType: 'straight',
+    laserLength: 200,
+    laserWidth: 12,
+    laserDelay: 30,
   }
 }
 

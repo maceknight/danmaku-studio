@@ -100,9 +100,20 @@ export interface MoveTaskNode {
   segments: MoveSegment[]
 }
 
+/**
+ * A `Modifier` after lowering. `childSpawn` is only set for `type === 'split'`
+ * — it's the child's SpawnNode, pre-resolved (shotDataId fallback, shape knobs
+ * borrowed from the parent) so danmakufu.ts can hand it straight to
+ * `writeSpawnBody` instead of re-deriving any of that from the raw `.dmk`
+ * `SplitChild`.
+ */
+export interface LoweredModifier extends Modifier {
+  childSpawn?: SpawnNode
+}
+
 export interface ControlTaskNode {
   taskName: string
-  modifiers: Modifier[]
+  modifiers: LoweredModifier[]
 }
 
 /** One per pattern with `wallBehavior !== 'none'` — a per-bullet edge watcher. */
@@ -112,7 +123,7 @@ export interface WallTaskNode {
   /** 0 = unlimited */
   bounces: number
   /** modifiers with `trigger === 'wall'`, sorted by `at` (hit count) */
-  modifiers: Modifier[]
+  modifiers: LoweredModifier[]
 }
 
 export interface SoundNode {

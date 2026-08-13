@@ -23,7 +23,7 @@ import {
 } from '../types/factory'
 import { colorOf } from '../io/shotData'
 import { SHAPE_ORDER, SHAPES, suggestShotDataId } from '../types/shapes'
-import { ShapeGlyph } from './icons'
+import { PatternGlyph, ShapeGlyph } from './icons'
 import { ShotPicker } from './ShotPicker'
 import { Btn, Card, Field, Group, NumField, Select } from './widgets'
 
@@ -1008,6 +1008,22 @@ function SplitChildEditor({
   return (
     <div className="mt-1.5 space-y-1 rounded-md border border-[var(--border)] bg-[var(--card-2)] p-1.5">
       <p className="text-[10px] font-semibold text-[var(--accent-ink)]">子弾の設定</p>
+      <div className="grid grid-cols-6 gap-1">
+        {PATTERN_LIBRARY.map((type) => (
+          <button
+            key={type}
+            title={PATTERN_LABELS[type]}
+            onClick={() => set({ type })}
+            className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
+              c.type === type
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--muted)] hover:bg-[var(--hover)]'
+            }`}
+          >
+            <PatternGlyph type={type} size={20} />
+          </button>
+        ))}
+      </div>
       <div className="grid grid-cols-2 gap-1">
         <MiniNum label="弾数" value={c.count} onChange={(v) => set({ count: Math.round(v) })} />
         <MiniNum
@@ -1024,6 +1040,36 @@ function SplitChildEditor({
         <MiniNum label="サイズ" value={c.scale} step={0.1} onChange={(v) => set({ scale: v })} />
         <MiniNum label="寿命F" value={c.life} onChange={(v) => set({ life: Math.round(v) })} />
       </div>
+      {c.type === 'laser' && (
+        <>
+          <label className="flex items-center gap-1">
+            <span className="w-14 shrink-0 text-[10.5px] text-[var(--muted)]">レーザー</span>
+            <Select
+              value={c.laserType}
+              options={[
+                { value: 'straight', label: '固定式（予告線あり）' },
+                { value: 'loose', label: '射出式（まち針）' },
+              ]}
+              onChange={(v) => set({ laserType: v })}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-1">
+            <MiniNum
+              label="長さ"
+              value={c.laserLength}
+              onChange={(v) => set({ laserLength: v })}
+            />
+            <MiniNum label="幅" value={c.laserWidth} onChange={(v) => set({ laserWidth: v })} />
+          </div>
+          {c.laserType === 'straight' && (
+            <MiniNum
+              label="予告線F"
+              value={c.laserDelay}
+              onChange={(v) => set({ laserDelay: Math.round(v) })}
+            />
+          )}
+        </>
+      )}
       <label className="flex items-center gap-1">
         <span className="w-14 shrink-0 text-[10.5px] text-[var(--muted)]">速度</span>
         <Select
@@ -1060,6 +1106,9 @@ function SplitChildEditor({
           onChange={(e) => set({ shotDataId: e.target.value })}
         />
       )}
+      <p className="text-[10px] leading-relaxed text-[var(--muted)]">
+        形状の細かい設定（楕円の比率・花弁の数など）は親のパターンを引き継ぎます。
+      </p>
     </div>
   )
 }

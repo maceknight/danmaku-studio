@@ -48,6 +48,8 @@ export interface SimBullet {
   fired: number
   /** how many times this bullet has touched the stage edge */
   wallHits: number
+  /** was it outside the stage last frame — so a crossing is counted once */
+  wasOutside: boolean
 }
 
 export interface EmitterMarker {
@@ -102,5 +104,6 @@ export function makeBullet(): SimBullet {
     depth: 0,
     fired: 0,
     wallHits: 0,
+    wasOutside: false,
   }
 }

@@ -244,6 +244,7 @@ export class Simulator {
     b.depth = depth
     b.fired = 0
     b.wallHits = 0
+    b.wasOutside = false
     return b
   }
 
@@ -305,44 +306,54 @@ export class Simulator {
       // cull, and using the stage rect itself (not OUT_MARGIN, which is a
       // separate "how far off-screen before we bother culling" allowance).
       // Anchored lasers (kind 1) never move, so the check is meaningless for them.
+      // Detection is separate from response: `wallHits` counts every crossing
+      // even when the bullet flies straight through, because a modifier can be
+      // triggered by wall contact without the bullet reacting to the wall
+      // itself. Only the *response* is gated on wallBehavior.
       const behavior = bd?.wallBehavior ?? 'none'
-      if (behavior !== 'none' && b.kind !== 1) {
+      if (b.kind !== 1) {
         const hw = settings.stageWidth / 2
         const hh = settings.stageHeight / 2
-        let hit = false
-        // left/right and top/bottom are checked separately — a corner hit can
-        // trip both in the same frame.
-        if (b.x < -hw || b.x > hw) {
-          hit = true
-          if (behavior === 'bounce') {
-            b.x = b.x < -hw ? -hw : hw
-            b.angle = 180 - b.angle
-          } else if (behavior === 'wrap') {
-            b.x = b.x < -hw ? hw : -hw
+        const outside = b.x < -hw || b.x > hw || b.y < -hh || b.y > hh
+        // count the crossing, not every frame spent outside
+        const crossed = outside && !b.wasOutside
+
+        if (crossed) b.wallHits += 1
+
+        if (outside && behavior !== 'none') {
+          // left/right and top/bottom are handled separately — a corner hit can
+          // trip both in the same frame.
+          if (b.x < -hw || b.x > hw) {
+            if (behavior === 'bounce') {
+              b.x = b.x < -hw ? -hw : hw
+              b.angle = 180 - b.angle
+            } else if (behavior === 'wrap') {
+              b.x = b.x < -hw ? hw : -hw
+            }
           }
-        }
-        if (b.y < -hh || b.y > hh) {
-          hit = true
-          if (behavior === 'bounce') {
-            b.y = b.y < -hh ? -hh : hh
-            b.angle = -b.angle
-          } else if (behavior === 'wrap') {
-            b.y = b.y < -hh ? hh : -hh
+          if (b.y < -hh || b.y > hh) {
+            if (behavior === 'bounce') {
+              b.y = b.y < -hh ? -hh : hh
+              b.angle = -b.angle
+            } else if (behavior === 'wrap') {
+              b.y = b.y < -hh ? hh : -hh
+            }
           }
-        }
-        if (hit) {
-          b.wallHits += 1
           if (behavior === 'vanish') {
             this.pool.release(i)
             continue
           }
           // "wallBounces" reads as "how many times it's allowed to bounce", so
           // it survives that many hits and only dies on the one after.
-          const limit = pat?.bullet.wallBounces ?? 0
+          const limit = bd?.wallBounces ?? 0
           if (limit > 0 && b.wallHits > limit) {
             this.pool.release(i)
             continue
           }
+          // bounce/wrap put it back inside, so the next crossing counts again
+          b.wasOutside = false
+        } else {
+          b.wasOutside = outside
         }
       }
 
@@ -504,35 +515,57 @@ export class Simulator {
     return true
   }
 
-  /** Fire a small nested pattern from wherever `b` currently is. */
+  /**
+   * Fire a small nested pattern from wherever `b` currently is.
+   *
+   * A split is really just "fire a tiny pattern from the parent bullet's
+   * position", so instead of hand-rolling the fan math this synthesises a
+   * throwaway Pattern for the child and hands it to the same `resolveShot()`
+   * every top-level shot goes through. That's what makes circle / oval / rose
+   * / laser splits work with zero extra shape code — they're the exact same
+   * code path as a real pattern, just fired once from a moving origin.
+   */
   private applySplit(b: SimBullet, mod: Modifier) {
-    const pat = this.compiled.patterns[b.patternIdx]?.pattern
-    if (!pat) return
+    const parentPattern = this.compiled.patterns[b.patternIdx]?.pattern
+    if (!parentPattern) return
     const cfg = splitChildOf(mod)
-    const n = Math.max(1, Math.round(cfg.count))
-    const childShot = cfg.shotDataId ? this.resolveShotId(cfg.shotDataId) : 0
-    const centre = b.angle + cfg.angleOffset
-    for (let k = 0; k < n; k++) {
-      const a = n > 1 ? centre - cfg.angleSpread / 2 + (cfg.angleSpread / (n - 1)) * k : centre
-      let sp = cfg.inheritSpeed ? b.speed : cfg.speed
-      if (cfg.speedRand > 0) sp += this.rng.jitter(cfg.speedRand)
-      const rad = a * D2R
-      const child = this.emit(
-        pat,
-        b.patternIdx,
-        b.x + Math.cos(rad) * cfg.radius,
-        b.y + Math.sin(rad) * cfg.radius,
-        a,
-        sp,
-        1,
-      )
-      if (child) {
-        child.delay = 0
-        child.scale = cfg.scale
-        child.baseScale = cfg.scale
-        child.life = cfg.life
-        if (childShot > 0) child.shotId = childShot
-      }
+    const childPattern: Pattern = {
+      ...parentPattern,
+      type: cfg.type,
+      count: Math.max(1, Math.round(cfg.count)),
+      angleBase: b.angle + cfg.angleOffset,
+      angleSpread: cfg.angleSpread,
+      radius: cfg.radius,
+      // one-shot fire — anything that only makes sense across several shots
+      // of the same pattern (spin, wave, aim, mirroring, jitter) is off
+      angleStep: 0,
+      wave: 0,
+      aimPlayer: false,
+      mirrorMode: 'none',
+      angleRandom: 0,
+      laserType: cfg.laserType,
+      laserLength: cfg.laserLength,
+      laserWidth: cfg.laserWidth,
+      laserDelay: cfg.laserDelay,
+      bullet: {
+        ...parentPattern.bullet,
+        speed: cfg.inheritSpeed ? b.speed : cfg.speed,
+        speedRand: cfg.speedRand,
+        scale: cfg.scale,
+        life: cfg.life,
+        delay: 0,
+        shotDataId: cfg.shotDataId || parentPattern.bullet.shotDataId,
+        // child doesn't resume the parent's in-progress ramp — restarting it
+        // mid-flight from an arbitrary speed reads as broken, not intentional
+        rampDuration: 0,
+      },
+    }
+    // aimAngle is unused because aimPlayer is forced off above
+    for (const s of resolveShot(childPattern, 0, 0, 0, this.rng)) {
+      // patternIdx stays the PARENT's: it's only consulted for modifier
+      // resolution, and children (depth 1) never receive modifiers, so this
+      // has no effect beyond keeping the renderer's bucketing untouched.
+      this.emit(childPattern, b.patternIdx, b.x + s.dx, b.y + s.dy, s.angle, s.speed, 1)
     }
   }
 

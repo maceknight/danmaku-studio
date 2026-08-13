@@ -161,6 +161,21 @@ export interface SplitChild {
   life: number
   /** empty = keep the parent's graphic */
   shotDataId: string
+
+  /**
+   * Child shape, from the same pattern library as a top-level Pattern. This is
+   * what lets "n-way fan" become "ring" or "laser" without any new shape code —
+   * the child is compiled through the exact same `resolveShot()` / ph3 spawn
+   * writer as a real pattern. Fine shape knobs (`ovalRatio`, `rosePetals`, …)
+   * are NOT here on purpose: the child borrows the parent pattern's, so this
+   * type doesn't grow a second copy of every shape parameter.
+   */
+  type: PatternType
+  /** only read when `type === 'laser'` */
+  laserType: LaserType
+  laserLength: number
+  laserWidth: number
+  laserDelay: number
 }
 
 // ---------------------------------------------------------------------------

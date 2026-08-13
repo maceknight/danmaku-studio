@@ -1,6 +1,13 @@
-import type { Easing, Modifier } from '../types/dmk'
+import type { Easing } from '../types/dmk'
 import { splitChildOf } from '../types/factory'
-import type { ControlTaskNode, PatternTaskNode, SpawnNode, TimelineAst, WallTaskNode } from './ast'
+import type {
+  ControlTaskNode,
+  LoweredModifier,
+  PatternTaskNode,
+  SpawnNode,
+  TimelineAst,
+  WallTaskNode,
+} from './ast'
 
 /** AST → 東方弾幕風 ph3 script text. The only module that knows ph3 syntax. */
 
@@ -122,25 +129,35 @@ function angleExpr(s: SpawnNode): string {
   }
 }
 
-function writeSpawn(w: Writer, t: PatternTaskNode) {
-  const s = t.spawn
+/**
+ * Where a spawn's shots originate from. Split off from `writeSpawn` so a
+ * split (fired from `ObjMove_GetX/Y(obj)`, mid control-task) can drive the
+ * exact same shot-shape code as a top-level pattern task (fired from the
+ * emitter/boss position) — see `writeSpawnBody`.
+ */
+interface SpawnOrigin {
+  x: string
+  y: string
+  /** already resolved to a full expression — the pattern-task call folds in
+   * rotation/angleStep/wave here; a split just points at the parent's heading */
+  angleBase: string
+  /** overrides the plain `n(bullet.speed)` base. Only splits use this, to
+   * inherit the parent bullet's current speed (`ObjMove_GetSpeed(obj)`) */
+  speedBase?: string
+}
+
+/**
+ * Per-index shot loop shared by pattern tasks and splits alike — this is the
+ * one place that knows how to turn a SpawnNode into `CreateShotA1` calls, so
+ * a split only has to supply where it starts from (`origin`) and gets every
+ * shape in the pattern library for free.
+ */
+function writeSpawnBody(w: Writer, s: SpawnNode, origin: SpawnOrigin) {
   const b = s.bullet
 
-  const baseParts: string[] = []
-  if (s.aimPlayer) baseParts.push('ObjMove_GetAngleToPlayer(objBoss)')
-  else baseParts.push(n(s.angleBase + t.rotation))
-  if (s.angleStep !== 0) baseParts.push(`${n(s.angleStep * s.spinDirection)} * shotIndex`)
-  if (s.wave !== 0 && s.wavePeriod > 0)
-    baseParts.push(`sin(shotIndex / ${n(s.wavePeriod)} * 360) * ${n(s.wave)}`)
-
-  w.line(`let angBase = ${baseParts.join(' + ')};`)
-  if (t.followsBoss) {
-    w.line('let bx = ObjMove_GetX(objBoss);')
-    w.line('let by = ObjMove_GetY(objBoss);')
-  } else {
-    w.line(`let bx = ${ox('CX', t.originX)};`)
-    w.line(`let by = ${ox('CY', t.originY)};`)
-  }
+  w.line(`let angBase = ${origin.angleBase};`)
+  w.line(`let bx = ${origin.x};`)
+  w.line(`let by = ${origin.y};`)
 
   // Mirroring flips the volley left/right about the vertical axis.
   // flip = 1 keeps it as authored, flip = -1 reflects it: ang → 180 - ang,
@@ -158,7 +175,8 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
 
   const layered = s.layers > 1
   if (layered) w.open(`ascent(l in 0..${n(s.layers)}) {`)
-  const baseSpeed = layered ? `${n(b.speed)} + ${n(s.layerSpeedStep)} * l` : n(b.speed)
+  const speedBase = origin.speedBase ?? n(b.speed)
+  const baseSpeed = layered ? `${speedBase} + ${n(s.layerSpeedStep)} * l` : speedBase
   w.line(`let spdBase = ${baseSpeed};`)
 
   w.open(`ascent(i in 0..${n(s.count)}) {`)
@@ -201,6 +219,23 @@ function writeSpawn(w: Writer, t: PatternTaskNode) {
   w.close()
   if (layered) w.close()
   if (mirrorBoth) w.close()
+}
+
+function writeSpawn(w: Writer, t: PatternTaskNode) {
+  const s = t.spawn
+
+  const baseParts: string[] = []
+  if (s.aimPlayer) baseParts.push('ObjMove_GetAngleToPlayer(objBoss)')
+  else baseParts.push(n(s.angleBase + t.rotation))
+  if (s.angleStep !== 0) baseParts.push(`${n(s.angleStep * s.spinDirection)} * shotIndex`)
+  if (s.wave !== 0 && s.wavePeriod > 0)
+    baseParts.push(`sin(shotIndex / ${n(s.wavePeriod)} * 360) * ${n(s.wave)}`)
+
+  writeSpawnBody(w, s, {
+    angleBase: baseParts.join(' + '),
+    x: t.followsBoss ? 'ObjMove_GetX(objBoss)' : ox('CX', t.originX),
+    y: t.followsBoss ? 'ObjMove_GetY(objBoss)' : ox('CY', t.originY),
+  })
 }
 
 function writePatternTask(w: Writer, t: PatternTaskNode) {
@@ -275,7 +310,7 @@ function writeEase(w: Writer, kind: Easing) {
   }
 }
 
-function writeModifier(w: Writer, m: Modifier) {
+function writeModifier(w: Writer, m: LoweredModifier) {
   const dur = Math.max(1, Math.round(m.duration))
   switch (m.type) {
     case 'rotate':
@@ -349,35 +384,21 @@ function writeModifier(w: Writer, m: Modifier) {
         )
       break
     case 'split': {
+      // A split is "fire a small pattern from wherever the parent bullet is",
+      // so it reuses writeSpawnBody — same as a real pattern task — instead of
+      // hand-writing CreateShotA1. That's what makes oval/rose/laser/etc.
+      // splits work without any shape code of their own.
       const c = splitChildOf(m)
-      const count = Math.max(1, Math.round(c.count))
-      const childShot = c.shotDataId.trim() || 'SHOT_SPLIT_ID'
+      if (!m.childSpawn) break // lower.ts always attaches this for split modifiers
       w.line('let sx = ObjMove_GetX(obj);')
       w.line('let sy = ObjMove_GetY(obj);')
-      w.line(`let sa = ObjMove_GetAngle(obj) + ${n(c.angleOffset)};`)
-      w.line(
-        c.inheritSpeed ? 'let ss = ObjMove_GetSpeed(obj);' : `let ss = ${n(c.speed)};`,
-      )
-      w.open(`ascent(k in 0..${count}) {`)
-      w.line(
-        count > 1
-          ? `let ca = sa - ${n(c.angleSpread / 2)} + (${n(c.angleSpread)} / ${n(count - 1)}) * k;`
-          : 'let ca = sa;',
-      )
-      w.line(
-        `let cs = ss${c.speedRand > 0 ? ` + rand(${n(-c.speedRand)}, ${n(c.speedRand)})` : ''};`,
-      )
-      if (c.radius !== 0) {
-        w.line(`let cx = sx + cos(ca) * ${n(c.radius)};`)
-        w.line(`let cy = sy + sin(ca) * ${n(c.radius)};`)
-      } else {
-        w.line('let cx = sx;')
-        w.line('let cy = sy;')
-      }
-      w.line(`let ch = CreateShotA1(cx, cy, cs, ca, ${childShot}, 0);`)
-      if (c.scale !== 1) w.line(`ObjRender_SetScaleXYZ(ch, ${n(c.scale)}, ${n(c.scale)}, 1);`)
-      if (c.life > 0) w.line(`TLife(ch, ${n(c.life)});`)
-      w.close()
+      if (c.inheritSpeed) w.line('let ss = ObjMove_GetSpeed(obj);')
+      writeSpawnBody(w, m.childSpawn, {
+        angleBase: `ObjMove_GetAngle(obj) + ${n(c.angleOffset)}`,
+        x: 'sx',
+        y: 'sy',
+        speedBase: c.inheritSpeed ? 'ss' : n(c.speed),
+      })
       break
     }
     case 'graphic':
@@ -406,7 +427,7 @@ function writeModifier(w: Writer, m: Modifier) {
  * `writeModifier` emits; everything else is already instantaneous and can
  * reuse that code as-is.
  */
-function writeModifierInstant(w: Writer, m: Modifier) {
+function writeModifierInstant(w: Writer, m: LoweredModifier) {
   switch (m.type) {
     case 'rotate':
       w.line(`ObjMove_SetAngle(obj, ObjMove_GetAngle(obj) + ${n(m.amount)});`)
@@ -466,13 +487,26 @@ function writeWallTask(w: Writer, t: WallTaskNode) {
   }
 
   w.line('let hits = 0;')
+  // only needed when the bullet passes through — bounce/wrap put it back
+  // inside, so for those the next crossing is naturally a fresh one
+  if (t.behavior === 'none') w.line('let wasOutside = false;')
   w.open('loop {')
   w.line('if (Obj_IsDeleted(obj)) { return; }')
   w.line('let x = ObjMove_GetX(obj);')
   w.line('let y = ObjMove_GetY(obj);')
   w.line('let a = ObjMove_GetAngle(obj);')
   w.line('let hit = false;')
-  if (t.behavior === 'bounce') {
+  if (t.behavior === 'none') {
+    // detection only: the bullet keeps going, but crossing the edge still
+    // counts so wall-triggered modifiers can fire
+    w.line('let outside = false;')
+    w.line('if (x < WALL_L) { outside = true; }')
+    w.line('if (x > WALL_R) { outside = true; }')
+    w.line('if (y < WALL_T) { outside = true; }')
+    w.line('if (y > WALL_B) { outside = true; }')
+    w.line('if (outside && !wasOutside) { hit = true; }')
+    w.line('wasOutside = outside;')
+  } else if (t.behavior === 'bounce') {
     w.open('if (x < WALL_L) {')
     w.line('ObjMove_SetX(obj, WALL_L);')
     w.line('a = 180 - a;')
@@ -519,7 +553,7 @@ function writeWallTask(w: Writer, t: WallTaskNode) {
   if (t.modifiers.length > 0) {
     // several modifiers can share the same hit count — group them so each
     // `if (hits == N)` only appears once
-    const byAt = new Map<number, Modifier[]>()
+    const byAt = new Map<number, LoweredModifier[]>()
     for (const m of t.modifiers) {
       const at = Math.max(1, Math.round(m.at))
       const list = byAt.get(at) ?? []
@@ -551,7 +585,6 @@ function writeWallTask(w: Writer, t: WallTaskNode) {
 
 export function generateDanmakufu(ast: TimelineAst): string {
   const w = new Writer()
-  const splitId = ast.shotDataIds[0] ?? 'WHITE01'
 
   w.line('#TouhouDanmakufu[Single]')
   w.line('#ScriptVersion[3]')
@@ -568,7 +601,6 @@ export function generateDanmakufu(ast: TimelineAst): string {
     w.line(`let WALL_T = ${ox('CY', -ast.stageHeight / 2)};`)
     w.line(`let WALL_B = ${ox('CY', ast.stageHeight / 2)};`)
   }
-  w.line(`let SHOT_SPLIT_ID = ${splitId};`)
   w.line('let objBoss;')
   w.blank()
 

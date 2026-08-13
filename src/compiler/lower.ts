@@ -5,8 +5,10 @@ import {
   type Pattern,
   type Project,
 } from '../types/dmk'
+import { splitChildOf } from '../types/factory'
 import type {
   ControlTaskNode,
+  LoweredModifier,
   MoveSegment,
   MoveTaskNode,
   PatternTaskNode,
@@ -72,6 +74,73 @@ function lowerSpawn(p: Pattern, controlTask: string | null, wallTask: string | n
   }
 }
 
+/**
+ * A split fires a small nested pattern, so — same as the engine — it gets a
+ * SpawnNode of its own rather than bespoke ph3 for "just a fan". Built once
+ * here so danmakufu.ts only has to hand it to `writeSpawnBody`.
+ */
+function lowerSplitSpawn(p: Pattern, m: Modifier): SpawnNode {
+  const c = splitChildOf(m)
+  return {
+    kind: 'spawn',
+    patternType: c.type,
+    count: Math.max(1, Math.round(c.count)),
+    layers: 1,
+    layerSpeedStep: 0,
+    radius: c.radius,
+    // unused by writeSpawnBody for split calls — the caller injects the full
+    // angle expression (ObjMove_GetAngle(obj) + offset) directly
+    angleBase: 0,
+    angleSpread: c.angleSpread,
+    angleStep: 0,
+    spinDirection: 1,
+    wave: 0,
+    wavePeriod: 0,
+    angleRandom: 0,
+    aimPlayer: false,
+    // shape-specific knobs aren't part of SplitChild — the child borrows the
+    // parent's so oval/polygon/rose splits keep the parent's proportions
+    ovalRatio: p.ovalRatio,
+    shapeTilt: p.shapeTilt,
+    polygonSides: Math.max(3, Math.round(p.polygonSides)),
+    rosePetals: Math.max(1, Math.round(p.rosePetals)),
+    lineSpacing: p.lineSpacing,
+    speedStep: p.speedStep,
+    mirrorMode: 'none',
+    bullet: {
+      shotDataId: c.shotDataId.trim() || p.bullet.shotDataId,
+      speed: c.speed,
+      speedRand: c.speedRand,
+      accel: p.bullet.accel,
+      maxSpeed: p.bullet.maxSpeed,
+      rampTarget: p.bullet.rampTarget,
+      rampDuration: 0,
+      rampDelay: 0,
+      rampEase: 'linear',
+      angularVelocity: p.bullet.angularVelocity,
+      life: c.life,
+      scale: c.scale,
+      blend: p.bullet.blend,
+      delay: 0,
+    },
+    laserType: c.laserType,
+    laserLength: c.laserLength,
+    laserWidth: c.laserWidth,
+    laserDelay: Math.max(0, Math.round(c.laserDelay)),
+    wallBehavior: 'none',
+    wallBounces: 0,
+    // a child never carries behaviour of its own — matches the engine, where
+    // split children get no modifiers and never re-split
+    controlTask: null,
+    wallTask: null,
+  }
+}
+
+function lowerModifier(p: Pattern, m: Modifier): LoweredModifier {
+  if (m.type !== 'split') return m
+  return { ...m, childSpawn: lowerSplitSpawn(p, m) }
+}
+
 /** .dmk → AST. Pure; no ph3 syntax knowledge lives here. */
 export function lower(project: Project): TimelineAst {
   const patternTasks: PatternTaskNode[] = []
@@ -112,9 +181,9 @@ export function lower(project: Project): TimelineAst {
       // The pattern's own speed ramp is just an `accel` modifier that the user
       // did not have to add by hand, so it rides the same control task. It is
       // always age-triggered — there is no UI to make the ramp itself wall-fired.
-      const ageMods: Modifier[] = p.modifiers.filter(
-        (m) => m.enabled && (m.trigger ?? 'age') !== 'wall',
-      )
+      const ageMods: LoweredModifier[] = p.modifiers
+        .filter((m) => m.enabled && (m.trigger ?? 'age') !== 'wall')
+        .map((m) => lowerModifier(p, m))
       if (p.bullet.rampDuration > 0) {
         ageMods.unshift({
           id: `${p.id}_ramp`,
@@ -138,12 +207,17 @@ export function lower(project: Project): TimelineAst {
       // matches the engine, which skips kind-1 bullets the same way.
       const anchoredLaser = p.type === 'laser' && p.laserType === 'straight'
       const wallBehavior = p.bullet.wallBehavior ?? 'none'
+      const wallMods = p.modifiers
+        .filter((m) => m.enabled && (m.trigger ?? 'age') === 'wall')
+        .sort((a, b) => a.at - b.at)
+        .map((m) => lowerModifier(p, m))
+      // Detection and response are independent: a bullet can fly straight
+      // through the wall and still trigger a modifier on the way out, so the
+      // watcher is needed whenever *either* is asked for. This mirrors the
+      // engine, which counts crossings regardless of wallBehavior.
       let wallTask: string | null = null
-      if (wallBehavior !== 'none' && !anchoredLaser) {
+      if ((wallBehavior !== 'none' || wallMods.length > 0) && !anchoredLaser) {
         wallTask = uniqueName(`TWall${ident(p.name, 'Pattern')}`)
-        const wallMods = p.modifiers
-          .filter((m) => m.enabled && (m.trigger ?? 'age') === 'wall')
-          .sort((a, b) => a.at - b.at)
         wallTasks.push({
           taskName: wallTask,
           behavior: wallBehavior,
